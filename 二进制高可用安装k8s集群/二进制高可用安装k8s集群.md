@@ -42,7 +42,7 @@ Kubeadm降低部署门槛，但屏蔽了很多细节，遇到问题很难排查�
 
 # 第二章  安装说明
 
-本文章将采用CentOS 7.9二进制方式安装高可用k8s 1.23+，其中Master节点3台，Node节点2台，高可用工具采用HAProxy + KeepAlived，相对于其他版本，二进制安装方式并无太大区别，只需要区分每个组件版本的对应关系即可。
+本文章将采用CentOS 7.9二进制方式安装高可用k8s 1.24+，其中Master节点3台，Node节点2台，高可用工具采用HAProxy + KeepAlived，相对于其他版本，二进制安装方式并无太大区别，只需要区分每个组件版本的对应关系即可。
 
 生产环境中，建议使用小版本大于5的Kubernetes版本，比如1.23.5以后的才可用于生产环境。
 
@@ -87,9 +87,9 @@ VIP（虚拟IP）不要和公司内网IP重复，首先去ping一下，不通才
 
 | 配置信息                            | 备注                                     |
 | ----------------------------------- | ---------------------------------------- |
-| 系统版本                            | CentOS 7.9（内核：5.15.80）              |
+| 系统版本                            | CentOS 7.9（内核：5.15.82）              |
 | Docker                              | 20.10.x                                  |
-| Kubernetes                          | 1.25.4                                   |
+| Kubernetes                          | 1.25.5                                   |
 | Pod网段                             | 172.16.0.0/12                            |
 | Service网段                         | 10.96.0.0/12                             |
 | 宿主机网段：inet 192.168.100.151/24 | 注意Pod、Service网段不要与宿主机网段重复 |
@@ -144,7 +144,7 @@ cp -p /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak$(d
 curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo
 
 必备工具安装：
-yum install -y yum-utils device-mapper-persistent-data lvm2
+yum install -y epel-release yum-utils device-mapper-persistent-data lvm2
 
 # docker源
 sudo yum-config-manager \
@@ -157,7 +157,7 @@ yum clean all && yum -y makecache && yum repolist
 yum -y update && yum -y upgrade && reboot
 
 常用工具安装：
-yum -y install epel-release wget jq psmisc vim net-tools telnet yum-utils \
+yum -y install wget jq psmisc vim net-tools telnet yum-utils \
   device-mapper-persistent-data lvm2 \
   git lrzsz unzip zip tree sysstat pciutils \
   nginx gcc kernel-devel dkms nmon ansible
@@ -248,12 +248,12 @@ Master01节点免密钥登录其他节点，安装过程中生成配置文件和
 [root@k8s-master01 ~] for i in k8s-master01 k8s-master02 k8s-master03 k8s-node01 k8s-node02;do ssh-copy-id -i .ssh/id_rsa.pub $i;done
 
 Master01下载安装文件：
-[root@k8s-master01 ~]# cd /root/ ; git clone https://github.com/dotbalo/k8s-ha-install.git
+[root@k8s-master01 ~]# cd /root/ ; git clone https://github.com/MystWeb/k8s-ha-install.git
 ```
 
 ## 3.3  内核升级配置
 
-CentOS7 需要升级内核至4.18+，本地升级的版本为5.15.80
+CentOS7 需要升级内核至4.18+，本地升级的版本为5.15.82
 
 在master01节点下载内核：
 
@@ -271,9 +271,9 @@ wget http://193.49.22.109/elrepo/kernel/el7/x86_64/RPMS/kernel-ml-4.19.12-1.el7.
 # 最新稳定内核版本：6.0.10
 wget https://elrepo.org/linux/kernel/el7/x86_64/RPMS/kernel-ml-devel-6.0.10-1.el7.elrepo.x86_64.rpm
 wget https://elrepo.org/linux/kernel/el7/x86_64/RPMS/kernel-ml-6.0.10-1.el7.elrepo.x86_64.rpm
-# 最新LTS内核版本：5.15.80
-wget https://dl.lamp.sh/kernel/el7/kernel-ml-devel-5.15.80-1.el7.x86_64.rpm
-wget https://dl.lamp.sh/kernel/el7/kernel-ml-5.15.80-1.el7.x86_64.rpm
+# 最新LTS内核版本：5.15.82
+wget https://dl.lamp.sh/kernel/el7/kernel-ml-devel-5.15.82-1.el7.x86_64.rpm
+wget https://dl.lamp.sh/kernel/el7/kernel-ml-5.15.82-1.el7.x86_64.rpm
 ```
 
 从master01节点传到其他节点：
@@ -295,10 +295,10 @@ awk -F\' '$1=="menuentry " {print i++ " : " $2}' /boot/grub2/grub.cfg
 ```
 
 ```bash
-0 : CentOS Linux (5.15.80-1.el7.x86_64) 7 (Core)
+0 : CentOS Linux (5.15.82-1.el7.x86_64) 7 (Core)
 1 : CentOS Linux (3.10.0-1160.80.1.el7.x86_64) 7 (Core)
 2 : CentOS Linux (3.10.0-1160.el7.x86_64) 7 (Core)
-3 : CentOS Linux (0-rescue-df7c0e8c0a014cffb57d3375d69cfcb3) 7 (Core)
+3 : CentOS Linux (0-rescue-f2c0680f2af64e878529fece3b92e36f) 7 (Core)
 ```
 
 所有节点更改内核启动顺序
@@ -308,17 +308,17 @@ grub2-set-default 0 && grub2-mkconfig -o /etc/grub2.cfg
 grubby --args="user_namespace.enable=1" --update-kernel="$(grubby --default-kernel)"
 ```
 
-检查默认内核是不是5.15.80
+检查默认内核是不是5.15.82
 
 ```sh
 grubby --default-kernel
 ```
 
 ```bash
-/boot/vmlinuz-5.15.80-1.el7.x86_64
+/boot/vmlinuz-5.15.82-1.el7.x86_64
 ```
 
-所有节点重启，然后检查内核是不是5.15.80
+所有节点重启，然后检查内核是不是5.15.82
 
 ```sh
 reboot
@@ -326,7 +326,7 @@ uname -a && rm -rf /opt/installation_package/kernel
 ```
 
 ```bash
-Linux k8s-master01 5.15.80-1.el7.x86_64 #1 SMP Wed Nov 16 10:51:14 UTC 2022 x86_64 x86_64 x86_64 GNU/Linux
+Linux k8s-master01 5.15.82-1.el7.x86_64 #1 SMP Thu Dec 8 13:49:20 UTC 2022 x86_64 x86_64 x86_64 GNU/Linux
 ```
 
 所有节点安装ipvsadm：
@@ -561,11 +561,11 @@ vim /etc/containerd/config.toml
 
 所有节点将`sandbox_image`的Pause镜像改成符合自己版本的地址：
 
-registry.cn-hangzhou.aliyuncs.com/google_containers/pause:3.8
+registry.cn-hangzhou.aliyuncs.com/google_containers/pause:3.9
 
 参考链接：https://github.com/AliyunContainerService/k8s-for-docker-desktop/blob/master/images.properties
 
-![image-20221125163808438](二进制高可用安装k8s集群.assets/image-20221125163808438.png)
+![image-20221214135136497](二进制高可用安装k8s集群.assets/image-20221214135136497.png)
 
 所有节点启动Containerd，并配置开机自启动：
 
@@ -589,14 +589,14 @@ EOF
 Master01下载kubernetes安装包
 
 ```sh
-[root@k8s-master01 ~]# mkdir -p /opt/installation_package/{kubernetes,etcd} && cd /opt/installation_package/kubernetes && wget https://dl.k8s.io/v1.25.4/kubernetes-server-linux-amd64.tar.gz
+[root@k8s-master01 ~]# mkdir -p /opt/installation_package/{kubernetes,etcd} && cd /opt/installation_package/kubernetes && wget https://dl.k8s.io/v1.25.5/kubernetes-server-linux-amd64.tar.gz
 ```
 
-注意目前版本是1.25.4，安装时需要下载最新的1.25.x版本：https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/CHANGELOG-1.25.md
+注意目前版本是1.25.5，安装时需要下载最新的1.25.x版本：https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/CHANGELOG-1.25.md
 
 打开页面后点击：
 
-![image-20221125173827763](二进制高可用安装k8s集群.assets/image-20221125173827763.png)
+![image-20221214095650385](二进制高可用安装k8s集群.assets/image-20221214095650385.png)
 
 **以下操作都在master01执行**
 
@@ -622,7 +622,7 @@ Master01下载kubernetes安装包
 
 ```sh
 [root@k8s-master01 ~]# kubelet --version
-Kubernetes v1.25.4
+Kubernetes v1.25.5
 [root@k8s-master01 ~]# etcdctl version
 etcdctl version: 3.5.6
 API version: 3.5
@@ -646,7 +646,7 @@ mkdir -p /opt/cni/bin
 Master01节点切换到1.25.x分支（其他版本可以切换到其他分支，.x即可，不需要更改为具体的小版本）
 
 ```sh
-cd /opt/installation_package && git clone git@github.com:MystWeb/k8s-ha-install.git
+cd /opt/installation_package && git clone https://github.com/MystWeb/k8s-ha-install.git
 cd /opt/installation_package/k8s-ha-install && git checkout manual-installation-v1.25.x
 ```
 
@@ -737,11 +737,11 @@ cfssl gencert -initca etcd-ca-csr.json | cfssljson -bare /etc/etcd/ssl/etcd-ca
 执行结果
 
 ```bash
-2022/11/30 16:28:58 [INFO] generate received request
-2022/11/30 16:28:58 [INFO] received CSR
-2022/11/30 16:28:58 [INFO] generating key: rsa-2048
-2022/11/30 16:28:59 [INFO] encoded CSR
-2022/11/30 16:28:59 [INFO] signed certificate with serial number 284180076718301112109422247272891273251587891154
+2022/12/14 14:07:54 [INFO] generate received request
+2022/12/14 14:07:54 [INFO] received CSR
+2022/12/14 14:07:54 [INFO] generating key: rsa-2048
+2022/12/14 14:07:55 [INFO] encoded CSR
+2022/12/14 14:07:55 [INFO] signed certificate with serial number 578142582718517357263811745144450416168339986243
 ```
 
 将证书复制到其他节点
@@ -799,12 +799,12 @@ cfssl gencert -ca=/etc/kubernetes/pki/front-proxy-ca.pem -ca-key=/etc/kubernetes
 返回结果（忽略警告）
 
 ```sh
-2022/11/30 16:30:25 [INFO] generate received request
-2022/11/30 16:30:25 [INFO] received CSR
-2022/11/30 16:30:25 [INFO] generating key: rsa-2048
-2022/11/30 16:30:26 [INFO] encoded CSR
-2022/11/30 16:30:26 [INFO] signed certificate with serial number 376454987351729817050574533254949121217076969197
-2022/11/30 16:30:26 [WARNING] This certificate lacks a "hosts" field. This makes it unsuitable for
+2022/12/14 14:09:07 [INFO] generate received request
+2022/12/14 14:09:07 [INFO] received CSR
+2022/12/14 14:09:07 [INFO] generating key: rsa-2048
+2022/12/14 14:09:07 [INFO] encoded CSR
+2022/12/14 14:09:07 [INFO] signed certificate with serial number 279637024862091547792911851849398285103473545833
+2022/12/14 14:09:07 [WARNING] This certificate lacks a "hosts" field. This makes it unsuitable for
 websites. For more information see the Baseline Requirements for the Issuance and Management
 of Publicly-Trusted Certificates, v.1.1.6, from the CA/Browser Forum (https://cabforum.org);
 specifically, section 10.2.3 ("Information Requirements").
@@ -1431,41 +1431,41 @@ Connection closed by foreign host.
 
 ● keepalived.service - LVS and VRRP High Availability Monitor
    Loaded: loaded (/usr/lib/systemd/system/keepalived.service; enabled; vendor preset: disabled)
-   Active: active (running) since Tue 2022-11-29 11:19:49 CST; 6min ago
-  Process: 5857 ExecStart=/usr/sbin/keepalived $KEEPALIVED_OPTIONS (code=exited, status=0/SUCCESS)
- Main PID: 5858 (keepalived)
+   Active: active (running) since Wed 2022-12-14 14:20:07 CST; 1min 37s ago
+  Process: 15344 ExecStart=/usr/sbin/keepalived $KEEPALIVED_OPTIONS (code=exited, status=0/SUCCESS)
+ Main PID: 15345 (keepalived)
     Tasks: 3
-   Memory: 2.8M
+   Memory: 3.1M
    CGroup: /system.slice/keepalived.service
-           ├─5858 /usr/sbin/keepalived -D
-           ├─5859 /usr/sbin/keepalived -D
-           └─5860 /usr/sbin/keepalived -D
+           ├─15345 /usr/sbin/keepalived -D
+           ├─15346 /usr/sbin/keepalived -D
+           └─15347 /usr/sbin/keepalived -D
 
-Nov 29 11:19:53 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:53 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:53 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:53 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:58 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:58 k8s-master01 Keepalived_vrrp[5860]: VRRP_Instance(VI_1) Sending/queueing gratuitous ARPs on eth....160
-Nov 29 11:19:58 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:58 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:58 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
-Nov 29 11:19:58 k8s-master01 Keepalived_vrrp[5860]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:11 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:11 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:11 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:11 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:16 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:16 k8s-master01 Keepalived_vrrp[15347]: VRRP_Instance(VI_1) Sending/queueing gratuitous ARPs on et....160
+Dec 14 14:20:16 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:16 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:16 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
+Dec 14 14:20:16 k8s-master01 Keepalived_vrrp[15347]: Sending gratuitous ARP on eth0 for 192.168.100.160
 
 ● haproxy.service - HAProxy Load Balancer
    Loaded: loaded (/usr/lib/systemd/system/haproxy.service; enabled; vendor preset: disabled)
-   Active: active (running) since Tue 2022-11-29 11:16:03 CST; 10min ago
- Main PID: 5724 (haproxy-systemd)
+   Active: active (running) since Wed 2022-12-14 14:20:07 CST; 1min 38s ago
+ Main PID: 15322 (haproxy-systemd)
     Tasks: 3
    Memory: 2.3M
    CGroup: /system.slice/haproxy.service
-           ├─5724 /usr/sbin/haproxy-systemd-wrapper -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid
-           ├─5729 /usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid -Ds
-           └─5746 /usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid -Ds
+           ├─15322 /usr/sbin/haproxy-systemd-wrapper -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid
+           ├─15328 /usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid -Ds
+           └─15329 /usr/sbin/haproxy -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid -Ds
 
-Nov 29 11:16:03 k8s-master01 systemd[1]: Started HAProxy Load Balancer.
-Nov 29 11:16:03 k8s-master01 haproxy-systemd-wrapper[5724]: haproxy-systemd-wrapper: executing /usr/sbin/haproxy...-Ds
-Nov 29 11:16:03 k8s-master01 haproxy-systemd-wrapper[5724]: [WARNING] 332/111603 (5729) : config : frontend 'GLO...ed.
+Dec 14 14:20:07 k8s-master01 systemd[1]: Started HAProxy Load Balancer.
+Dec 14 14:20:07 k8s-master01 haproxy-systemd-wrapper[15322]: haproxy-systemd-wrapper: executing /usr/sbin/haprox...-Ds
+Dec 14 14:20:07 k8s-master01 haproxy-systemd-wrapper[15322]: [WARNING] 347/142007 (15328) : config : frontend 'G...ed.
 Hint: Some lines were ellipsized, use -l to show in full.
 ```
 
@@ -1768,7 +1768,7 @@ systemctl status kube-controller-manager
 ```sh
 ● kube-controller-manager.service - Kubernetes Controller Manager
    Loaded: loaded (/usr/lib/systemd/system/kube-controller-manager.service; enabled; vendor preset: disabled)
-   Active: active (running) since Wed 2022-11-30 17:08:34 CST; 58s ago
+   Active: active (running) since Wed 2022-12-14 14:27:36 CST; 3s ago
 ```
 
 查看系统日志信息
@@ -1822,7 +1822,7 @@ systemctl status kube-scheduler
 ```sh
 ● kube-scheduler.service - Kubernetes Scheduler
    Loaded: loaded (/usr/lib/systemd/system/kube-scheduler.service; enabled; vendor preset: disabled)
-   Active: active (running) since Wed 2022-11-30 17:12:11 CST; 3s ago
+   Active: active (running) since Wed 2022-12-14 14:28:38 CST; 2s ago
 ```
 
 查看系统日志信息
@@ -1966,6 +1966,7 @@ Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/boot
 Environment="KUBELET_SYSTEM_ARGS=--container-runtime=remote --runtime-request-timeout=15m --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
 Environment="KUBELET_CONFIG_ARGS=--config=/etc/kubernetes/kubelet-conf.yml"
 Environment="KUBELET_EXTRA_ARGS=--node-labels=node.kubernetes.io/node='' "
+ExecStart=
 ExecStart=/usr/local/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_SYSTEM_ARGS $KUBELET_EXTRA_ARGS
 ```
 
@@ -2078,7 +2079,7 @@ master01查看集群状态（Ready或NotReady都正常）
 [root@k8s-master01 bootstrap]# kubectl get node
 ```
 
- ![image-20221201145835462](二进制高可用安装k8s集群.assets/image-20221201145835462.png)
+ ![image-20221214144723481](二进制高可用安装k8s集群.assets/image-20221214144723481.png)
 
 ## 10.3  kube-proxy配置
 
@@ -2363,9 +2364,110 @@ k8s-node01     37m          0%     655Mi           4%
 k8s-node02     36m          0%     705Mi           4% 
 ```
 
+# [第十四章 k8s-master节点添加/移除污点taints](https://blog.csdn.net/cd_yourheart/article/details/108766912)
 
+手动部署的k8s集群, 需要为master节点手动设置taints
 
-# 第十四章  集群验证
+## 14.1  污点设置常用命令
+
+### 14.1.1 设置taint
+
+语法：
+
+```bash
+kubectl taint node [node] key=value[effect]   
+     其中[effect] 可取值: [ NoSchedule | PreferNoSchedule | NoExecute ]
+      NoSchedule: 一定不能被调度
+      PreferNoSchedule: 尽量不要调度
+      NoExecute: 不仅不会调度, 还会驱逐Node上已有的Pod
+```
+
+示例：
+
+```bash
+kubectl taint node node1 key1=value1:NoSchedule
+kubectl taint node node1 key1=value1:NoExecute
+kubectl taint node node1 key2=value2:NoSchedule
+```
+
+### 14.1.2  查看taint
+
+```bash
+kubectl describe node node1
+```
+
+### 14.1.3  删除taint
+
+```bash
+kubectl taint node node1 key1:NoSchedule-  # 这里的key可以不用指定value
+kubectl taint node node1 key1:NoExecute-
+# kubectl taint node node1 key1-  删除指定key所有的effect
+kubectl taint node node1 key2:NoSchedule-
+```
+
+## 14.2  Master节点设置taint（推荐）
+
+```bash
+kubectl taint nodes k8s-master01 k8s-master02 k8s-master03 node-role.kubernetes.io/master=:NoSchedule
+```
+
+> 注意⚠️ : 为master设置的这个taint中, `node-role.kubernetes.io/master`为`key`, `value`为空, `effect`为`NoSchedule`
+>
+> 如果输入命令时, 你丢掉了`=`符号, 写成了`node-role.kubernetes.io/master:NoSchedule`, 会报`error: at least one taint update is required`错误
+
+## 14.3  容忍tolerations主节点的taints
+
+> 以上面为 k8s-master01 设置的 taints 为例, 你需要为你的 yaml 文件中添加如下配置, 才能容忍 master 节点的污点
+>
+> 在 pod 的 spec 中设置 tolerations 字段
+
+```yaml
+tolerations:
+- key: "node-role.kubernetes.io/master"
+  operator: "Equal"
+  value: ""
+  effect: "NoSchedule"
+```
+
+## 14.4  Master节点移除taint
+
+```bash
+#查看污点策略，显示三个master节点都是NoSchedule
+[root@master1 ~]# kubectl get no -o yaml | grep taint -A 5
+    taints:
+    - effect: NoSchedule
+      key: node-role.kubernetes.io/master
+  status:
+    addresses:
+    - address: 192.168.100.151
+--
+    taints:
+    - effect: NoSchedule
+      key: node-role.kubernetes.io/master
+  status:
+    addresses:
+    - address: 192.168.100.152
+--
+    taints:
+    - effect: NoSchedule
+      key: node-role.kubernetes.io/master
+  status:
+    addresses:
+    - address: 192.168.100.153
+
+#去除污点，允许master节点部署pod
+[root@master1 ~]# kubectl taint nodes --all node-role.kubernetes.io/master-
+node/k8s-master01 untainted
+node/k8s-master02 untainted
+node/k8s-master03 untainted
+taint "node-role.kubernetes.io/master" not found
+taint "node-role.kubernetes.io/master" not found
+ 
+#再次查看，无显示，说明污点去除成功
+[root@master1 ~]# kubectl get no -o yaml | grep taint -A 5
+```
+
+# 第十五章  集群验证
 
 > 集群验证请参考视频的集群验证，必须要做！！！
 
@@ -2463,9 +2565,9 @@ Escape character is '^]'.
 
 [root@k8s-master01 ~]# kubectl get svc -n kube-system
 NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                  AGE
-calico-typha     ClusterIP   10.103.5.90     <none>        5473/TCP                 16h
-kube-dns         ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP,9153/TCP   16h
-metrics-server   ClusterIP   10.100.55.195   <none>        443/TCP                  15h
+calico-typha     ClusterIP   10.108.155.65    <none>        5473/TCP                 20m
+kube-dns         ClusterIP   10.96.0.10       <none>        53/UDP,53/TCP,9153/TCP   15m
+metrics-server   ClusterIP   10.103.157.250   <none>        443/TCP                  13m
 
 [root@k8s-master01 ~]# telnet 10.96.0.10 53
 Trying 10.96.0.10...
@@ -2498,7 +2600,7 @@ PING 192.168.100.151 (192.168.100.151): 56 data bytes
 64 bytes from 192.168.100.151: seq=2 ttl=63 time=0.214 ms
 
 # 快速部署一个Deployment
-[root@k8s-master01 ~]# kubectl create deploy nginx --image=nginx --replicas=3
+[root@k8s-master01 ~]# kubectl create deploy nginx --image=nginx:1.23.2 --replicas=3
 deployment.apps/nginx created
 [root@k8s-master01 ~]# kubectl get deploy
 NAME    READY   UP-TO-DATE   AVAILABLE   AGE
@@ -2510,17 +2612,28 @@ nginx-6799fc88d8-fgr8w   0/1     ContainerCreating   0          45s   <none>    
 nginx-6799fc88d8-ltvtm   0/1     ContainerCreating   0          45s   <none>          k8s-master02   <none>           <none>
 nginx-6799fc88d8-srgln   0/1     ContainerCreating   0          45s   <none>          k8s-master01   <none>           <none>
 
+# 删除集群验证相关资源
 [root@k8s-master01 ~]# kubectl delete deploy nginx
 [root@k8s-master01 ~]# kubectl delete po busybox dnsutils
+[root@k8s-node01 ~]# ctr -n k8s.io i ls | grep 'nginx'
 ```
 
-# 第十五章  安装dashboard
+```bash
+docker.io/library/nginx:1.23.2                                                                                                    application/vnd.docker.distribution.manifest.list.v2+json sha256:ab589a3c466e347b1c0573be23356676df90cd7ce2dbf6ec332a5f0a8b5e59db 54.2 MiB  linux/386,linux/amd64,linux/arm/v5,linux/arm/v7,linux/arm64/v8,linux/mips64le,linux/ppc64le,linux/s390x io.cri-containerd.image=managed 
+docker.io/library/nginx@sha256:ab589a3c466e347b1c0573be23356676df90cd7ce2dbf6ec332a5f0a8b5e59db                                   application/vnd.docker.distribution.manifest.list.v2+json sha256:ab589a3c466e347b1c0573be23356676df90cd7ce2dbf6ec332a5f0a8b5e59db 54.2 MiB  linux/386,linux/amd64,linux/arm/v5,linux/arm/v7,linux/arm64/v8,linux/mips64le,linux/ppc64le,linux/s390x io.cri-containerd.image=managed 
+```
 
-## 15.1  Dashboard部署
+```bash
+ctr -n k8s.io i rm docker.io/library/nginx:1.23.2 docker.io/library/nginx@sha256:ab589a3c466e347b1c0573be23356676df90cd7ce2dbf6ec332a5f0a8b5e59db
+```
+
+# 第十六章  安装dashboard
+
+## 16.1  Dashboard部署
 
 Dashboard用于展示集群中的各类资源，同时也可以通过Dashboard实时查看Pod的日志和在容器中执行一些命令等。
 
-### 15.1.1  安装指定版本dashboard
+### 16.1.1  安装指定版本dashboard（推荐）
 
 ```sh
 [root@k8s-master01 dashboard]# cd /opt/installation_package/k8s-ha-install/dashboard/ && kubectl create -f .
@@ -2545,7 +2658,7 @@ service/dashboard-metrics-scraper created
 deployment.apps/dashboard-metrics-scraper created
 ```
 
-### 15.1.2  安装最新版
+### 16.1.2  安装最新版
 
 官方GitHub地址：https://github.com/kubernetes/dashboard
 
@@ -2607,7 +2720,7 @@ subjects:
 kubectl apply -f dashboard-user.yaml -n kube-system
 ```
 
-### 15.1.3  登录dashboard
+### 16.1.3  登录dashboard
 
 在谷歌浏览器（Chrome）启动文件中加入启动参数，用于解决无法访问Dashboard的问题，参考图1-1：
 
@@ -2639,13 +2752,13 @@ kubectl edit svc kubernetes-dashboard -n kubernetes-dashboard
 
 ```sh
 [root@k8s-master01 dashboard]# kubectl get svc kubernetes-dashboard -n kubernetes-dashboard
-NAME                   TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)         AGE
-kubernetes-dashboard   NodePort   10.100.250.250   <none>        443:31060/TCP   6m48s
+NAME                   TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)         AGE
+kubernetes-dashboard   NodePort   10.96.174.10   <none>        443:32439/TCP   2m13s
 ```
 
 根据自己的实例端口号，通过任意安装了kube-proxy的宿主机或者VIP的IP+端口即可访问到dashboard：
 
-访问Dashboard：[https://192.168.100.160:31060（请更改31060为自己的端口）](https://192.168.100.160:31060)，选择登录方式为令牌（即token方式），参考图1-2
+访问Dashboard：[https://192.168.100.160:32439（请更改32439为自己的端口）](https://192.168.100.160:32439)，选择登录方式为令牌（即token方式），参考图1-2
 
 ![image-20221205145016829](二进制高可用安装k8s集群.assets/image-20221205145016829.png)
 
@@ -2655,19 +2768,19 @@ kubernetes-dashboard   NodePort   10.100.250.250   <none>        443:31060/TCP  
 
 ```sh
 [root@k8s-master01 dashboard]# kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}')
-Name:         admin-user-token-7rhmb
+Name:         admin-user-token-wldm9
 Namespace:    kube-system
 Labels:       <none>
 Annotations:  kubernetes.io/service-account.name: admin-user
-              kubernetes.io/service-account.uid: 07b63767-801a-4f02-8427-b8d93e476fba
+              kubernetes.io/service-account.uid: ece33cb7-7112-41c3-9a3d-bd1ae979ace8
 
 Type:  kubernetes.io/service-account-token
 
 Data
 ====
-ca.crt:     1363 bytes
+ca.crt:     1411 bytes
 namespace:  11 bytes
-token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IjRLbF9ZeUFlNTQtSUI4SzZUSnNDZVdBRVpNeW1KMENid0t2Ym5rcmVCVHcifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi11c2VyLXRva2VuLTdyaG1iIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImFkbWluLXVzZXIiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiIwN2I2Mzc2Ny04MDFhLTRmMDItODQyNy1iOGQ5M2U0NzZmYmEiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06YWRtaW4tdXNlciJ9.RX2ulEPGwxZZopoaNw4q4FTHvUeq6J-PIc-MFkOpGreMzTDHvQDOGGPgpuAibphULJXzOIMi9McB5LsXTVDhWMu6Eu_pUTPLGOSXlN96Rtk0R9wgPJvk1Vg_E_ctaIHPZBtZEke1VDM5SByWhg9wnc90-fRasJH9CWI6aPptnsvXwKX79z6DO_A0CT0UPMP-54lVNgFxjfkPHAQpENMXakt1wrvnohBUhgECpMZO2LuJa0BInifot-DAdeceIYdorJp9oy2dvZy8KWNHKNIugCzuOxVnJ-TjLwmdv-LuCKrnYlI6qU68rUFrsF0_nLLuhqHERJHzEicuGinV8H9e4w
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IkgxeEctbFp5S0NWdVE3Wnp6Z00zSEo3Sy1ZeFRRRlhJRnc2SlNJZ0xLMmsifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi11c2VyLXRva2VuLXdsZG05Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImFkbWluLXVzZXIiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJlY2UzM2NiNy03MTEyLTQxYzMtOWEzZC1iZDFhZTk3OWFjZTgiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06YWRtaW4tdXNlciJ9.E5lYrO24xpgbTvLY1oxEW267N3MwQg-XCxaT9ybgaBn15kup36sN4foIAFlQvtGmamp_29qs9pgkZWu_P5xHTUtibGHx568JpwSGYkUUAy6o615jCCspsj5BoUnrGBf9VoRVN2CCGRylbGE2EqueXTCPC-B3RGOaUVcjk7LO4nLD_O12jlF-qqRSbKfdnw3glmZNEAwrMBIJZ_681YxlQfb_qAEwjNkRofOOhTk72ozHR9eNtd8jdeed9KUUZO9nwumUVGJmkhOA-yTOt9UaGCO_cUNLdq3ih8H2f67K6mj8PVQe--smiJE2pFgvgBpamzFVQhU5qZGX2KLbf2m9UA
 ```
 
 将token值输入到令牌后，单击登录即可访问Dashboard，参考图1-3：
@@ -2676,7 +2789,7 @@ token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IjRLbF9ZeUFlNTQtSUI4SzZUSnNDZVdBRVpNeW1K
 
 图1-3 Dashboard页面
 
-# 第十六章  生产环境关键性配置（K8s≤ 1.24）
+# 第十七章  生产环境关键性配置（K8s≤ 1.24）
 
 > 关键性配置请参考视频，不要直接配置！
 
@@ -2804,13 +2917,13 @@ c) Docker数据盘也要和系统盘分开，有条件的话可以使用ssd硬�
 
 
 
-# 第十七章  安装Ingress Controller
+# 第十八章  安装Ingress Controller
 
-## 17.1  安装对应版本（推荐）
+## 18.1  安装对应版本（推荐）
 
 官方安装文档：https://kubernetes.github.io/ingress-nginx/deploy/#bare-metal-clusters
 
-## 17.2  Helm安装Ingress Controller
+## 18.2  Helm安装Ingress Controller
 
 首先安装helm管理工具：https://helm.sh/docs/intro/install/
 
@@ -2880,135 +2993,30 @@ kubectl label node k8s-node01 ingress=true
 kubectl label node k8s-master03 ingress-
 ```
 
-# [第十八章 k8s-master节点添加/移除污点taints](https://blog.csdn.net/cd_yourheart/article/details/108766912)
-
-手动部署的k8s集群, 需要为master节点手动设置taints
-
-## 18.1  污点设置常用命令
-
-### 18.1.1 设置taint
-
-语法：
-
-```bash
-kubectl taint node [node] key=value[effect]   
-     其中[effect] 可取值: [ NoSchedule | PreferNoSchedule | NoExecute ]
-      NoSchedule: 一定不能被调度
-      PreferNoSchedule: 尽量不要调度
-      NoExecute: 不仅不会调度, 还会驱逐Node上已有的Pod
-```
-
-示例：
-
-```bash
-kubectl taint node node1 key1=value1:NoSchedule
-kubectl taint node node1 key1=value1:NoExecute
-kubectl taint node node1 key2=value2:NoSchedule
-```
-
-### 18.1.2  查看taint
-
-```bash
-kubectl describe node node1
-```
-
-### 18.1.3  删除taint
-
-```bash
-kubectl taint node node1 key1:NoSchedule-  # 这里的key可以不用指定value
-kubectl taint node node1 key1:NoExecute-
-# kubectl taint node node1 key1-  删除指定key所有的effect
-kubectl taint node node1 key2:NoSchedule-
-```
-
-## 18.2  Master节点设置taint
-
-```bash
-kubectl taint nodes k8s-master01 k8s-master02 k8s-master03 node-role.kubernetes.io/master=:NoSchedule
-```
-
-> 注意⚠️ : 为master设置的这个taint中, `node-role.kubernetes.io/master`为`key`, `value`为空, `effect`为`NoSchedule`
->
-> 如果输入命令时, 你丢掉了`=`符号, 写成了`node-role.kubernetes.io/master:NoSchedule`, 会报`error: at least one taint update is required`错误
-
-## 18.3  容忍tolerations主节点的taints
-
-> 以上面为 k8s-master01 设置的 taints 为例, 你需要为你的 yaml 文件中添加如下配置, 才能容忍 master 节点的污点
->
-> 在 pod 的 spec 中设置 tolerations 字段
-
-```yaml
-tolerations:
-- key: "node-role.kubernetes.io/master"
-  operator: "Equal"
-  value: ""
-  effect: "NoSchedule"
-```
-
-## 18.4  Master节点移除taint
-
-```bash
-#查看污点策略，显示三个master节点都是NoSchedule
-[root@master1 ~]# kubectl get no -o yaml | grep taint -A 5
-    taints:
-    - effect: NoSchedule
-      key: node-role.kubernetes.io/master
-  status:
-    addresses:
-    - address: 192.168.100.151
---
-    taints:
-    - effect: NoSchedule
-      key: node-role.kubernetes.io/master
-  status:
-    addresses:
-    - address: 192.168.100.152
---
-    taints:
-    - effect: NoSchedule
-      key: node-role.kubernetes.io/master
-  status:
-    addresses:
-    - address: 192.168.100.153
-
-#去除污点，允许master节点部署pod
-[root@master1 ~]# kubectl taint nodes --all node-role.kubernetes.io/master-
-node/k8s-master01 untainted
-node/k8s-master02 untainted
-node/k8s-master03 untainted
-taint "node-role.kubernetes.io/master" not found
-taint "node-role.kubernetes.io/master" not found
- 
-#再次查看，无显示，说明污点去除成功
-[root@master1 ~]# kubectl get no -o yaml | grep taint -A 5
-```
-
-
-
 # 第十九章  集群宕机恢复
 
 检查所有Master节点的服务状态
 
 ```bash
-systemctl status docker kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy etcd
+systemctl status containerd kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy etcd
 ```
 
 检查所有Node节点的服务状态
 
 ```bash
-systemctl status docker kubelet kube-proxy
+systemctl status containerd kubelet kube-proxy
 ```
 
 重新启动Master节点自启动失败的服务
 
 ```bash
-systemctl restart docker kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy etcd
+systemctl restart containerd kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy etcd
 ```
 
 重新启动Node节点自启动失败的服务
 
 ```bash
-systemctl restart docker kubelet kube-proxy
+systemctl restart containerd kubelet kube-proxy
 ```
 
 查看系统日志信息
