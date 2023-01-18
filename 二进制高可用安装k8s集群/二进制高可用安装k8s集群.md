@@ -153,6 +153,10 @@ sudo yum-config-manager \
     --add-repo \
     https://nvidia.github.io/nvidia-docker/centos7/nvidia-docker.repo
 
+# Add End Point Package Repository（CentOS 7上安装新版本 Git 最快的方法是通过End Point库）
+# 其他版本的 CentOS 替换成对应版本安装，可参考：https://packages.endpointdev.com
+yum install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
+
 yum clean all && yum -y makecache && yum repolist
 yum -y update && yum -y upgrade && reboot
 
@@ -160,7 +164,8 @@ yum -y update && yum -y upgrade && reboot
 yum -y install wget jq psmisc vim net-tools telnet yum-utils \
   device-mapper-persistent-data lvm2 \
   git lrzsz unzip zip tree sysstat pciutils \
-  nginx gcc kernel-devel dkms nmon ansible
+  nginx gcc kernel-devel dkms nmon ansible \
+  expect lsof
 
 所有节点关闭防火墙、selinux、dnsmasq、swap。服务器配置如下：
 systemctl disable --now firewalld # 关闭防火墙
@@ -482,7 +487,7 @@ mkdir -p /etc/docker
 #cat <<EOF>> /etc/docker/daemon.json
 cat > /etc/docker/daemon.json <<EOF
 {
-    "insecure-registries":[],
+    "insecure-registries":["http://192.168.100.150:8082"],
     "exec-opts": ["native.cgroupdriver=systemd"],
     "registry-mirrors": [
         "http://hub-mirror.c.163.com",
@@ -507,7 +512,11 @@ cat > /etc/docker/daemon.json <<EOF
 EOF
 ```
 
-> 无需启动Docker，只需要配置和启动Containerd即可。
+> 通常情况下无需启动Docker，只需要配置和启动Containerd即可。
+
+```bash
+systemctl daemon-reload && systemctl enable --now docker
+```
 
 ## 4.2  Containerd作为Runtime（K8s版本≥1.24）
 
@@ -584,7 +593,89 @@ debug: false
 EOF
 ```
 
-## 4.3  K8s及etcd安装
+### 4.2.1  Containerd配置
+
+> containerd 实现了 kubernetes 的 Container Runtime Interface (CRI) 接口，提供容器运行时核心功能，如镜像管理、容器管理等，相比 dockerd 更加简单、健壮和可移植。
+>
+> 从docker过度还是需要一点时间慢慢习惯的，今天来探讨containerd 如何从无域名与权威证书的私有仓库harbor，下载镜像！
+>
+> containerd 不能像docker一样 `docker login harbor.example.com` 登录到镜像仓库,无法从harbor拉取到镜像。
+
+修改Containerd配置文件
+
+```bash
+vim /etc/containerd/config.toml
+```
+
+- [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]：镜像仓库源地址
+- endpoint = ["https://registry-1.docker.io"]：镜像仓库代理地址
+- insecure_skip_verify = true：是否跳过安全认证
+- [plugins."io.containerd.grpc.v1.cri".registry.configs."192.168.100.150:8082".auth]：私有镜像仓库授权认证
+  - 配置私有镜像仓库账号密码后，k8s Pod拉取镜像无需创建Secrets，Deployment也无需配置Secrets
+
+- 配置文件参考：https://github.com/containerd/containerd/blob/main/docs/cri/registry.md
+
+```toml
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = ""
+
+      [plugins."io.containerd.grpc.v1.cri".registry.auths]
+
+      [plugins."io.containerd.grpc.v1.cri".registry.configs]
+        [plugins."io.containerd.grpc.v1.cri".registry.configs."192.168.100.150:8082".tls]
+          insecure_skip_verify = true  # 是否跳过安全认证
+        [plugins."io.containerd.grpc.v1.cri".registry.configs."192.168.100.150:8082".auth]
+          username = "admin"
+          password = "proaim@2013"
+      [plugins."io.containerd.grpc.v1.cri".registry.headers]
+
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+          endpoint = ["https://registry-1.docker.io"]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."192.168.100.150:8082"]
+          endpoint = ["http://192.168.100.150:8082"]
+```
+
+拉取和查看镜像
+
+```bash
+ctr -n k8s.io image pull 192.168.100.150:8082/proaim/proaim-trinity-service:RELEASE-1.2.0-fc67c4d5 --plain-http --user admin:Harbor12345
+ctr -n k8s.io image ls
+```
+
+## 4.3  Docker-Composer安装
+
+Linux 上我们可以从 Github 上下载它的二进制包来使用，最新发行的版本地址：https://github.com/docker/compose/releases。
+
+运行以下命令以下载 Docker Compose 的当前稳定版本：
+
+```bash
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.14.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+```
+
+Docker Compose 存放在 GitHub，不太稳定。
+
+你可以也通过执行下面的命令，高速安装 Docker Compose。
+
+```bash
+curl -L https://get.daocloud.io/docker/compose/releases/download/v2.14.2/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+```
+
+将可执行权限应用于二进制文件并创建软链：
+
+```bash
+sudo chmod +x /usr/local/bin/docker-compose
+sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+```
+
+测试是否安装成功
+
+```bash
+docker-compose version
+Docker Compose version v2.14.2
+```
+
+## 4.4  K8s及etcd安装
 
 Master01下载kubernetes安装包
 
@@ -650,7 +741,7 @@ cd /opt/installation_package && git clone https://github.com/MystWeb/k8s-ha-inst
 cd /opt/installation_package/k8s-ha-install && git checkout manual-installation-v1.25.x
 ```
 
-## 4.4  命令自动补全
+## 4.5  命令自动补全
 
 **安装 bash-completion**
 
@@ -661,19 +752,31 @@ sudo yum install -y bash-completion
 pause   plugin  port    ps      pull    push
 ```
 
-**根据 Docker 官方文档进一步配置**
+**Docker Composer 命令自动补全**
 
 ```sh
 sudo curl -L https://raw.githubusercontent.com/docker/compose/1.27.4/contrib/completion/bash/docker-compose -o /etc/bash_completion.d/docker-compose
 source /etc/bash_completion.d/docker-compose
 ```
 
-**Master节点k8s 命令自动补全**
+**Containerd Ctr 命令自动补全**
+
+```bash
+curl -L https://raw.githubusercontent.com/containerd/containerd/main/contrib/autocomplete/ctr -o /etc/bash_completion.d/ctr # ctr自动补全
+```
+
+**K8s-Master节点 命令自动补全**
 
 ```sh
 source /usr/share/bash-completion/bash_completion
 source <(kubectl completion bash)
 echo "source <(kubectl completion bash)" >> ~/.bashrc
+```
+
+**Helm 命令自动补全**
+
+```bash
+helm completion bash > .helmrc && echo "source .helmrc" >> .bashrc
 ```
 
 # 第五章  生成证书
@@ -2919,9 +3022,25 @@ c) Docker数据盘也要和系统盘分开，有条件的话可以使用ssd硬�
 
 # 第十八章  安装Ingress Controller
 
+Ingress Examples：https://github.com/nginxinc/kubernetes-ingress/tree/v2.4.2/examples
+
 ## 18.1  安装对应版本（推荐）
 
 官方安装文档：https://kubernetes.github.io/ingress-nginx/deploy/#bare-metal-clusters
+
+> 基于[官方安装文件](https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.5.1/deploy/static/provider/baremetal/deploy.yaml)，修改国内镜像制作
+
+```bash
+[root@k8s-master01 ingress]# cd /opt/installation_package/k8s-ha-install/ingress/ && kubectl create -f .
+```
+
+```bash
+[root@k8s-master01 ingress]# kubectl get pod -n ingress-nginx 
+NAME                                        READY   STATUS      RESTARTS   AGE
+ingress-nginx-admission-create-6bdn8        0/1     Completed   0          10m
+ingress-nginx-admission-patch-5htfh         0/1     Completed   0          10m
+ingress-nginx-controller-64c6577bf5-b4xx2   1/1     Running     0          10m
+```
 
 ## 18.2  Helm安装Ingress Controller
 
@@ -3024,3 +3143,4 @@ systemctl restart containerd kubelet kube-proxy
 ```bash
 tail -f /var/log/messages
 ```
+
