@@ -3022,7 +3022,7 @@ c) Docker数据盘也要和系统盘分开，有条件的话可以使用ssd硬�
 
 # 第十八章  安装Ingress Controller
 
-Ingress Examples：https://github.com/nginxinc/kubernetes-ingress/tree/v2.4.2/examples
+Ingress Examples：https://github.com/kubernetes/ingress-nginx/tree/main/docs/examples
 
 ## 18.1  安装对应版本（推荐）
 
@@ -3042,25 +3042,27 @@ ingress-nginx-admission-patch-5htfh         0/1     Completed   0          10m
 ingress-nginx-controller-64c6577bf5-b4xx2   1/1     Running     0          10m
 ```
 
-## 18.2  Helm安装Ingress Controller
+## 18.2  Helm安装Ingress Controller（生产级高可用架构）
 
-首先安装helm管理工具：https://helm.sh/docs/intro/install/
+### 18.2.1  Helm管理工具安装
 
-**From the Binary Releases**
+- Helm管理工具安装文档：https://helm.sh/docs/intro/install/
+- Helm管理工具最新版本：https://github.com/helm/helm/releases
 
-Every [release](https://github.com/helm/helm/releases) of Helm provides binary releases for a variety of OSes. These binary versions can be manually downloaded and installed.
+```bash
+wget https://get.helm.sh/helm-v3.11.0-linux-amd64.tar.gz
+tar -zxvf helm-v3.11.0-linux-amd64.tar.gz
+mv linux-amd64/helm /usr/local/bin/helm && helm version
+```
 
-1. Download your [desired version](https://github.com/helm/helm/releases)
-2. Unpack it (`tar -zxvf helm-v3.10.2-linux-amd64.tar.gz`)
-3. Find the `helm` binary in the unpacked directory, and move it to its desired destination (`mv linux-amd64/helm /usr/local/bin/helm`)
+### 18.2.2  Helm安装Ingress
 
-使用helm安装ingress：[https://kubernetes.github.io/ingress-nginx/deploy/](https://kubernetes.github.io/ingress-nginx/deploy/)
+Helm安装Ingress文档：[https://kubernetes.github.io/ingress-nginx/deploy/](https://kubernetes.github.io/ingress-nginx/deploy/)
 
 1、添加ingress的helm仓库
 
-```sh
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
 ```
 
 2、下载ingress的helm包至本地
@@ -3081,8 +3083,14 @@ vim values.yaml
 4、需要修改的位置
 
 - Controller和admissionWebhook的镜像地址，需要将公网镜像同步至公司内网镜像仓库（和课程不一致的版本，需要自行同步gcr镜像的，可以百度查一下使用阿里云同步gcr的镜像，也可以参考这个连接https://blog.csdn.net/weixin_39961559/article/details/80739352，或者参考这个连接： https://blog.csdn.net/sinat_35543900/article/details/103290782）
+  - 镜像的digest值注释！
+
 - hostNetwork设置为true
+  - 使用宿主机的网络，部署成功后可在node节点通过`netstat -lntp | grep 80`及`ps aux | grep nginx`，可以查看到nginx/master监听的端口号和进程
+
 - dnsPolicy设置为 ClusterFirstWithHostNet
+  - ClusterFirstWithHostNet专门为了hostNetwork而设计的，否则ingress-nginx-controller无法解析service
+
 - nodeSelector添加ingress: "true"部署至指定节点
 
 ```yaml
@@ -3092,23 +3100,39 @@ vim values.yaml
 ```
 
 - 类型更改为 kind: DaemonSet
+  - 因为DaemonSet支持部署在指定节点，Deployment没有这种机制。
 
 - 虚拟机类型更改为 type: ClusterIP，云服务器类型更改为 type: LoadBalancer
+- ingress nginx 设置为默认的ingressClass
+
+```yaml
+  ## This section refers to the creation of the IngressClass resource
+  ## IngressClass resources are supported since k8s >= 1.18 and required since k8s >= 1.19
+  ingressClassResource:
+    name: nginx
+    enabled: true
+    default: true # 设置为true
+    controllerValue: "k8s.io/ingress-nginx"
+```
 
 5、部署ingress
 
 给需要部署ingress的节点上打标签
 
 ```sh
-kubectl label node k8s-master03 ingress=true
+kubectl label node k8s-node01 ingress=true
 kubectl create ns ingress-nginx
 helm install ingress-nginx -n ingress-nginx .
 ```
 
-6、将ingress controller部署至Node节点（ingress controller不能部署在master节点，需要安装视频中的步骤将ingress controller部署至Node节点，生产环境最少三个ingress controller，并且最好是独立的节点）
+6、将ingress controller部署至Node节点
+
+> ingress controller不能部署在Master节点，生产环境最少三个ingress controller，并且最好是独立的Node节点
+>
+> 注意：访问ingress域名时，需要访问ingress-controller所在节点的主机地址，而没有部署ingress-controller的节点，无法转发。
 
 ```sh
-kubectl label node k8s-node01 ingress=true
+kubectl label node k8s-node02 ingress=true
 kubectl label node k8s-master03 ingress-
 ```
 
