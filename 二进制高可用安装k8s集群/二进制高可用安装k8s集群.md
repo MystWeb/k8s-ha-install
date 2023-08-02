@@ -165,7 +165,7 @@ yum -y install wget jq psmisc vim net-tools telnet yum-utils \
   device-mapper-persistent-data lvm2 \
   git lrzsz unzip zip tree sysstat pciutils \
   nginx gcc kernel-devel dkms nmon ansible \
-  expect lsof
+  expect lsof screen
 
 所有节点关闭防火墙、selinux、dnsmasq、swap。服务器配置如下：
 systemctl disable --now firewalld # 关闭防火墙
