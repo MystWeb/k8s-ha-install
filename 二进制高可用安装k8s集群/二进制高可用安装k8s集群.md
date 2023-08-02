@@ -482,31 +482,33 @@ sudo yum install docker-ce-<VERSION_STRING> docker-ce-cli-<VERSION_STRING> conta
 ### 4.1.1 Docker配置
 
 ```sh
-mkdir -p /etc/docker
-
 #cat <<EOF>> /etc/docker/daemon.json
-cat > /etc/docker/daemon.json <<EOF
+sudo cat > /etc/docker/daemon.json <<EOF
 {
+    "bip": "172.17.0.1/24",
+    "data-root": "/var/lib/docker",
+    "storage-driver": "overlay2",
     "insecure-registries":["http://192.168.100.150:8082"],
     "exec-opts": ["native.cgroupdriver=systemd"],
     "registry-mirrors": [
-        "http://hub-mirror.c.163.com",
-        "https://docker.mirrors.ustc.edu.cn"
+        "https://docker.nju.edu.cn",
+        "https://hub-mirror.c.163.com",
+        "https://registry.cn-hangzhou.aliyuncs.com"
     ],
     "max-concurrent-downloads": 10,
     "max-concurrent-uploads": 20,
+    "live-restore": true,
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "500m",
+        "max-file": "3"
+    },
     "default-runtime": "nvidia",
     "runtimes": {
         "nvidia": {
             "path": "nvidia-container-runtime",
             "runtimeArgs": []
         }
-    },
-    "live-restore": true,
-    "log-driver": "json-file",
-    "log-opts": {
-        "max-size": "500m",
-        "max-file": "3"
     }
 }
 EOF
