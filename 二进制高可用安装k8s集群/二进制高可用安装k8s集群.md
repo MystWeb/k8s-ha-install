@@ -628,7 +628,7 @@ vim /etc/containerd/config.toml
           insecure_skip_verify = true  # 是否跳过安全认证
         [plugins."io.containerd.grpc.v1.cri".registry.configs."192.168.100.150:8082".auth]
           username = "admin"
-          password = "proaim@2013"
+          password = "YOUR_HARBOR_PASSWORD"
       [plugins."io.containerd.grpc.v1.cri".registry.headers]
 
       [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
@@ -641,7 +641,7 @@ vim /etc/containerd/config.toml
 拉取和查看镜像
 
 ```bash
-ctr -n k8s.io image pull 192.168.100.150:8082/proaim/proaim-trinity-service:RELEASE-1.2.0-fc67c4d5 --plain-http --user admin:Harbor12345
+ctr -n k8s.io image pull 192.168.100.150:8082/proaimltd/ram-int-c:1.0 --plain-http --user admin:Harbor12345
 ctr -n k8s.io image ls
 ```
 
@@ -2885,7 +2885,8 @@ Data
 ====
 ca.crt:     1411 bytes
 namespace:  11 bytes
-token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IkgxeEctbFp5S0NWdVE3Wnp6Z00zSEo3Sy1ZeFRRRlhJRnc2SlNJZ0xLMmsifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi11c2VyLXRva2VuLXdsZG05Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImFkbWluLXVzZXIiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJlY2UzM2NiNy03MTEyLTQxYzMtOWEzZC1iZDFhZTk3OWFjZTgiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06YWRtaW4tdXNlciJ9.E5lYrO24xpgbTvLY1oxEW267N3MwQg-XCxaT9ybgaBn15kup36sN4foIAFlQvtGmamp_29qs9pgkZWu_P5xHTUtibGHx568JpwSGYkUUAy6o615jCCspsj5BoUnrGBf9VoRVN2CCGRylbGE2EqueXTCPC-B3RGOaUVcjk7LO4nLD_O12jlF-qqRSbKfdnw3glmZNEAwrMBIJZ_681YxlQfb_qAEwjNkRofOOhTk72ozHR9eNtd8jdeed9KUUZO9nwumUVGJmkhOA-yTOt9UaGCO_cUNLdq3ih8H2f67K6mj8PVQe--smiJE2pFgvgBpamzFVQhU5qZGX2KLbf2m9UA
+token:      
+eyJhbGciOiJSUzI1NiIsImtpZCI6IkgxeEctbFp5S0NWdVE3Wnp6Z00zSEo3Sy1ZeFRRRlhJRnc2SlNJZ0xLMmsifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi11c2VyLXRva2VuLXdsZG05Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImFkbWluLXVzZXIiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiJlY2UzM2NiNy03MTEyLTQxYzMtOWEzZC1iZDFhZTk3OWFjZTgiLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06YWRtaW4tdXNlciJ9.E5lYrO24xpgbTvLY1oxEW267N3MwQg-XCxaT9ybgaBn15kup36sN4foIAFlQvtGmamp_29qs9pgkZWu_P5xHTUtibGHx568JpwSGYkUUAy6o615jCCspsj5BoUnrGBf9VoRVN2CCGRylbGE2EqueXTCPC-B3RGOaUVcjk7LO4nLD_O12jlF-qqRSbKfdnw3glmZNEAwrMBIJZ_681YxlQfb_qAEwjNkRofOOhTk72ozHR9eNtd8jdeed9KUUZO9nwumUVGJmkhOA-yTOt9UaGCO_cUNLdq3ih8H2f67K6mj8PVQe--smiJE2pFgvgBpamzFVQhU5qZGX2KLbf2m9UA
 ```
 
 将token值输入到令牌后，单击登录即可访问Dashboard，参考图1-3：
