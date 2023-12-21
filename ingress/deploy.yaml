@@ -336,6 +336,9 @@ subjects:
 apiVersion: v1
 data:
   allow-snippet-annotations: "true"
+  compute-full-forwarded-for: "true"
+  forwarded-for-header: "X-Forwarded-For"
+  use-forwarded-headers: "true"
 kind: ConfigMap
 metadata:
   labels:
@@ -368,11 +371,13 @@ spec:
     port: 80
     protocol: TCP
     targetPort: http
+    nodePort: 30080
   - appProtocol: https
     name: https
     port: 443
     protocol: TCP
     targetPort: https
+    nodePort: 30443
   selector:
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: ingress-nginx
