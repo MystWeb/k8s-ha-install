@@ -3139,6 +3139,76 @@ kubectl label node k8s-node02 ingress=true
 kubectl label node k8s-master03 ingress-
 ```
 
+## 18.3  k8s流量策略与ingress获取真实ip
+
+**业务架构：**
+Client->WAF->LB->ECS->容器
+问题：在容器中获取不到真实的客户端公网IP
+
+**分析**:
+
+```bash
+# 容器里面抓包验证
+tcpdump -i eth0 -s 0 -w /tmp/http.cap port 端口
+
+WAF已经将 真实客户端地址放到了 x-Forwarded-For 的字段中传给了ECS；
+在容器中抓包，看到一个 x-Forwarded-For 的字段是错误的,对应的IP为WAF的回源地址；
+ingress将真实的客户端IP，放到了 x-Original-Forwarded-For 。而将WAF的回源地址放到了 x-Forwarded-For了。造成ingress获取ip为WAF回源地址。
+
+# 查看虚拟服务器、服务组的转发规则
+ipvsadm -Ln
+```
+
+### 18.3.1  X-Forwarded-For 配置
+
+```bash
+kubectl -n ingress-nginx edit configmaps ingress-nginx-controller
+```
+
+```yaml
+apiVersion: v1
+data:
+  allow-snippet-annotations: "true"
+  compute-full-forwarded-for: "true"
+  forwarded-for-header: "X-Forwarded-For"
+  use-forwarded-headers: "true"
+kind: ConfigMap
+```
+
+### 18.3.2  ingress svc 流量策略设置成Local
+
+如果使用ingress NodePort方式，并以DaemonSet方式安装ingress-nginx-controller,可以实现客户端从任何节点都可以访问，并可获取到客户端的真实IP：
+
+externalTrafficPolicy的好处是，Pod内应用的确可以拿到真实的客户端地址了，但坏处是： **客户端只能使用pod所在的node的IP访问，无法使用其他node的ip访问以及使用vrrp之类的virtual IP来实现ha**，对客户端来说会麻烦一点。
+
+设置 `service.spec.externalTrafficPolicy` 的值为 `Local`，请求就只会被代理到本地 endpoints 而不会被转发到其它节点。这样就保留了最初的源 IP 地址。
+
+```yaml
+# 将 Deployment 改为 DaemonSet
+vim /opt/installation_package/k8s-ha-install/ingress/deploy.yaml
+# 删掉 replicas: 1
+# 将ingress svc 改为 externalTrafficPolicy: Local
+```
+
+```
+                client  
+           ^ /          ^ \ 
+          / /            \ \ 
+         / v              \ v    
+node 1 service-NodePort     node 2 serviceNodePort  
+     ^ |                    ^ |
+     | |                    | |
+     | v                    | v
+node1 ingress-controller  node2 ingress-controller 
+    ^  \                  /  ^    
+     \  \                /  /   
+      \  \              /  /  
+       \  v            v  /          
+             endpoint
+```
+
+nginx日志`$http_x_forwarded_for`已经记录了客户端的真实IP
+
 # 第十九章  集群宕机恢复
 
 检查所有Master节点的服务状态
