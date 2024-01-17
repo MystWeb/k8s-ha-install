@@ -339,6 +339,14 @@ data:
   compute-full-forwarded-for: "true"
   forwarded-for-header: "X-Forwarded-For"
   use-forwarded-headers: "true"
+  log-format-upstream: '{"time": "$time_local","remote_addr": "$remote_addr","x-forward-for":
+    "$proxy_add_x_forwarded_for","request_id": "$req_id","remote_user": "$remote_user","bytes_sent":
+    "$body_bytes_sent","request_time": "$request_time","status": "$status","vhost":
+    "$host","request_proto": "$server_protocol","path": "$uri","request_query": "$args","request_length":
+    "$request_length","duration": "$request_time","method": "$request_method","http_referrer":
+    "$http_referer","http_user_agent": "$http_user_agent", "namespace": "$namespace",
+    "ingress_name": "$ingress_name","service_name": "$service_name","service_port":
+    "$service_port"}'
 kind: ConfigMap
 metadata:
   labels:
