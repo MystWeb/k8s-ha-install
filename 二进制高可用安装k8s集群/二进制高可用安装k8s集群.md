@@ -645,6 +645,34 @@ ctr -n k8s.io image pull 192.168.100.150:8082/proaimltd/ram-int-c:1.0 --plain-ht
 ctr -n k8s.io image ls
 ```
 
+### 4.2.2 Containerd-ctr删除无用镜像
+
+```bash
+vim ctr-garbage-collect.sh
+```
+
+```bash
+#!/bin/bash
+
+# 设置命名空间
+namespace=k8s.io
+
+# 列出所有镜像，并过滤掉已经使用的镜像
+used_images=$(ctr -n=${namespace} containers list | awk '{print $2}')
+all_images=$(ctr -n=${namespace} images list -q)
+
+# 找到未被使用的镜像
+unused_images=$(comm -23 <(echo "$all_images" | sort) <(echo "$used_images" | sort))
+
+# 删除未被使用的镜像
+for image in $unused_images; do
+    echo "Deleting unused image: $image"
+    ctr -n=${namespace} images delete $image
+done
+
+echo "Cleanup complete."
+```
+
 ## 4.3  Docker-Composer安装
 
 Linux 上我们可以从 Github 上下载它的二进制包来使用，最新发行的版本地址：https://github.com/docker/compose/releases。
