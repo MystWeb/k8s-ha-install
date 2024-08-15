@@ -645,6 +645,34 @@ ctr -n k8s.io image pull 192.168.100.150:8082/proaimltd/ram-int-c:1.0 --plain-ht
 ctr -n k8s.io image ls
 ```
 
+### 4.2.2 Containerd-ctr删除无用镜像
+
+```bash
+vim ctr-garbage-collect.sh
+```
+
+```bash
+#!/bin/bash
+
+# 设置命名空间
+namespace=k8s.io
+
+# 列出所有镜像，并过滤掉已经使用的镜像
+used_images=$(ctr -n=${namespace} containers list | awk '{print $2}')
+all_images=$(ctr -n=${namespace} images list -q)
+
+# 找到未被使用的镜像
+unused_images=$(comm -23 <(echo "$all_images" | sort) <(echo "$used_images" | sort))
+
+# 删除未被使用的镜像
+for image in $unused_images; do
+    echo "Deleting unused image: $image"
+    ctr -n=${namespace} images delete $image
+done
+
+echo "Cleanup complete."
+```
+
 ## 4.3  Docker-Composer安装
 
 Linux 上我们可以从 Github 上下载它的二进制包来使用，最新发行的版本地址：https://github.com/docker/compose/releases。
@@ -3139,7 +3167,9 @@ kubectl label node k8s-node02 ingress=true
 kubectl label node k8s-master03 ingress-
 ```
 
-## 18.3  k8s流量策略与ingress获取真实ip
+## 18.3  [k8s流量策略与ingress获取真实ip](https://blog.horus-k.com/2021/06/17/k8s%E6%B5%81%E9%87%8F%E7%AD%96%E7%95%A5%E4%B8%8Eingress%E8%8E%B7%E5%8F%96%E7%9C%9F%E5%AE%9Eip/#%E8%8E%B7%E5%8F%96%E7%9C%9F%E5%AE%9Eip)
+
+参考链接：https://kubernetes.github.io/ingress-nginx/deploy/baremetal/、https://metallb.universe.tf/usage/#traffic-policies
 
 **业务架构：**
 Client->WAF->LB->ECS->容器
@@ -3159,7 +3189,7 @@ ingress将真实的客户端IP，放到了 x-Original-Forwarded-For 。而将WAF
 ipvsadm -Ln
 ```
 
-### 18.3.1  X-Forwarded-For 配置
+### [18.3.1  X-Forwarded-For 配置](https://kubernetes.io/zh-cn/docs/tutorials/services/source-ip/)
 
 ```bash
 kubectl -n ingress-nginx edit configmaps ingress-nginx-controller
@@ -3175,7 +3205,7 @@ data:
 kind: ConfigMap
 ```
 
-### 18.3.2  ingress svc 流量策略设置成Local
+### [18.3.2  ingress svc 流量策略设置成Local](https://segmentfault.com/a/1190000022272897)
 
 如果使用ingress NodePort方式，并以DaemonSet方式安装ingress-nginx-controller,可以实现客户端从任何节点都可以访问，并可获取到客户端的真实IP：
 
@@ -3191,23 +3221,31 @@ vim /opt/installation_package/k8s-ha-install/ingress/deploy.yaml
 ```
 
 ```
-                client  
-           ^ /          ^ \ 
-          / /            \ \ 
-         / v              \ v    
+               client
+        ^ /              ^ \ 
+       / /                \ \ 
+      / v                  \ v    
 node 1 service-NodePort     node 2 serviceNodePort  
      ^ |                    ^ |
      | |                    | |
      | v                    | v
 node1 ingress-controller  node2 ingress-controller 
-    ^  \                  /  ^    
-     \  \                /  /   
-      \  \              /  /  
-       \  v            v  /          
-             endpoint
+     ^  \                  /  ^    
+      \  \                /  /   
+       \  \              /  /  
+        \  v            v  /          
+              endpoint
 ```
 
 nginx日志`$http_x_forwarded_for`已经记录了客户端的真实IP
+
+**总结**
+
+> 7层转发链路 Client(客户端) > Nginx > K8s Ingress(Nginx ingress)
+>
+> 4层转发链路 Client(客户端) > 公有云LB > K8s Ingress(Nginx ingress) (阿里云默认为此)
+>
+> ps: 实际业务会串联更多层级的转发。DDOS、WAF、CDN、Api Gateway一般是http 7层转发，LB一般是4层tcp转发
 
 # 第十九章  集群宕机恢复
 
