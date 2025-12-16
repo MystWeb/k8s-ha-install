@@ -617,6 +617,48 @@ vim /etc/containerd/config.toml
 
 - 配置文件参考：https://github.com/containerd/containerd/blob/main/docs/cri/registry.md
 
+- Contained v1.6.3~v2.0及以上版本配置
+
+```toml
+[plugins."io.containerd.cri.v1.images"]
+  snapshotter = "overlayfs"
+  disable_snapshot_annotations = true
+  discard_unpacked_layers = false
+  max_concurrent_downloads = 3
+  image_pull_progress_timeout = "5m0s"
+  image_pull_with_sync_fs = false
+  stats_collect_period = 10
+
+  [plugins."io.containerd.cri.v1.images".registry]
+    config_path = "/etc/containerd/certs.d"
+
+    [plugins."io.containerd.cri.v1.images".registry.auths]
+      # Auth configurations can be placed here if needed
+
+    [plugins."io.containerd.cri.v1.images".registry.configs."192.168.100.150:8082".tls]
+      insecure_skip_verify = true  # 跳过安全认证
+
+    [plugins."io.containerd.cri.v1.images".registry.configs."192.168.100.150:8082".auth]
+      username = "admin"
+      password = "YOUR_HARBOR_PASSWORD"
+
+  [plugins."io.containerd.cri.v1.images".registry.mirrors]
+    [plugins."io.containerd.cri.v1.images".registry.mirrors."docker.io"]
+      endpoint = ["https://registry-1.docker.io"]
+    [plugins."io.containerd.cri.v1.images".registry.mirrors."k8s.io"]
+      endpoint = ["https://k8s-gcr.m.daocloud.io"]
+    [plugins."io.containerd.cri.v1.images".registry.mirrors."192.168.100.150:8082"]
+      endpoint = ["http://192.168.100.150:8082"]
+```
+
+> 修改 `config.toml` 配置文件
+
+```
+vim /etc/containerd/config.toml
+```
+
+- Contained v1.6.2.x及以下版本配置
+
 ```toml
     [plugins."io.containerd.grpc.v1.cri".registry]
       config_path = ""
@@ -634,14 +676,20 @@ vim /etc/containerd/config.toml
       [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
         [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
           endpoint = ["https://registry-1.docker.io"]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."k8s.io"]
+          endpoint = ["https://k8s-gcr.m.daocloud.io"]
         [plugins."io.containerd.grpc.v1.cri".registry.mirrors."192.168.100.150:8082"]
           endpoint = ["http://192.168.100.150:8082"]
+```
+
+```
+systemctl daemon-reload && systemctl restart containerd
 ```
 
 拉取和查看镜像
 
 ```bash
-ctr -n k8s.io image pull 192.168.100.150:8082/proaimltd/ram-int-c:1.0 --plain-http --user admin:Harbor12345
+ctr -n k8s.io image pull 192.168.100.150:8082/proaimltd/ram-int-c:1.0 --plain-http --user admin:password
 ctr -n k8s.io image ls
 ```
 
@@ -1679,6 +1727,7 @@ ExecStart=/usr/local/bin/kube-apiserver \
       --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.pem  \
       --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.pem  \
       --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client-key.pem  \
+      #--requestheader-allowed-names=front-proxy-client  \
       --requestheader-allowed-names=aggregator  \
       --requestheader-group-headers=X-Remote-Group  \
       --requestheader-extra-headers-prefix=X-Remote-Extra-  \
@@ -1735,6 +1784,7 @@ ExecStart=/usr/local/bin/kube-apiserver \
       --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.pem  \
       --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.pem  \
       --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client-key.pem  \
+      #--requestheader-allowed-names=front-proxy-client  \
       --requestheader-allowed-names=aggregator  \
       --requestheader-group-headers=X-Remote-Group  \
       --requestheader-extra-headers-prefix=X-Remote-Extra-  \
@@ -1791,6 +1841,7 @@ ExecStart=/usr/local/bin/kube-apiserver \
       --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.pem  \
       --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.pem  \
       --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client-key.pem  \
+      #--requestheader-allowed-names=front-proxy-client  \
       --requestheader-allowed-names=aggregator  \
       --requestheader-group-headers=X-Remote-Group  \
       --requestheader-extra-headers-prefix=X-Remote-Extra-  \
@@ -2453,10 +2504,10 @@ linux/amd64, go1.19.1, 596a9f9
 
 在新版的Kubernetes中系统资源的采集均使用Metrics-server，可以通过Metrics采集节点和Pod的内存、磁盘、CPU和网络的使用率。
 
-安装metrics server
+[安装metrics server](https://github.com/kubernetes-sigs/metrics-server)
 
 ```sh
-[root@k8s-master01 metrics-server]# cd /opt/installation_package/k8s-ha-install/metrics-server && kubectl create -f .
+[root@k8s-master01 metrics-server]# cd /opt/installation_package/k8s-ha-install/metrics-server && kubectl apply -f .
 ```
 
 ```sh
@@ -3277,5 +3328,188 @@ systemctl restart containerd kubelet kube-proxy
 
 ```bash
 tail -f /var/log/messages
+```
+
+# 第二十章 实战技巧
+
+## 20.1 定时平均分配节点容器及资源
+
+```yaml
+[root@devops-app01 descheduler]# cat /opt/descheduler/values.yaml
+# 适用于小型K8s集群（10节点以内）的descheduler配置
+# 匹配Kubernetes v1.25.5，优化master节点过滤
+
+kind: CronJob
+
+image:
+  repository: registry.k8s.io/descheduler/descheduler
+  tag: "v0.29.0"  # 与K8s v1.25.5兼容的版本
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+ports:
+  - containerPort: 10258
+    protocol: TCP
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+podSecurityContext: {}
+
+nameOverride: ""
+fullnameOverride: ""
+
+namespaceOverride: ""
+
+commonLabels: {}
+
+cronJobApiVersion: "batch/v1"
+schedule: "*/15 * * * *"
+suspend: false
+successfulJobsHistoryLimit: 2
+failedJobsHistoryLimit: 1
+ttlSecondsAfterFinished: 3600
+
+deschedulingInterval: 15m
+
+replicas: 1
+
+leaderElection:
+  enabled: false
+
+command:
+- "/bin/descheduler"
+
+cmdOptions:
+  v: 2
+
+deschedulerPolicyAPIVersion: "descheduler/v1alpha2"
+
+deschedulerPolicy:
+  maxNoOfPodsToEvictPerNode: 5
+  maxNoOfPodsToEvictPerNamespace: 10
+  # 仅处理工作节点的Pod，完全排除master节点
+  nodeSelector: "kubernetes.io/hostname notin (k8s-master01,k8s-master02,k8s-master03)"
+  
+  profiles:
+    - name: default
+      pluginConfig:
+        - name: DefaultEvictor
+          args:
+            ignorePvcPods: false
+            evictLocalStoragePods: false
+        - name: RemoveDuplicates
+        - name: RemovePodsHavingTooManyRestarts
+          args:
+            podRestartThreshold: 50
+            includingInitContainers: true
+        - name: RemovePodsViolatingNodeAffinity
+          args:
+            nodeAffinityType:
+            - requiredDuringSchedulingIgnoredDuringExecution
+        - name: RemovePodsViolatingNodeTaints
+        - name: RemovePodsViolatingInterPodAntiAffinity
+        - name: RemovePodsViolatingTopologySpreadConstraint
+        - name: LowNodeUtilization
+          args:
+            thresholds:
+              cpu: 10
+              memory: 10
+              pods: 10
+            targetThresholds:
+              cpu: 70
+              memory: 70
+              pods: 70
+      plugins:
+        balance:
+          enabled:
+            - RemoveDuplicates
+            - RemovePodsViolatingTopologySpreadConstraint
+            - LowNodeUtilization
+        deschedule:
+          enabled:
+            - RemovePodsHavingTooManyRestarts
+            - RemovePodsViolatingNodeTaints
+            - RemovePodsViolatingNodeAffinity
+            - RemovePodsViolatingInterPodAntiAffinity
+
+priorityClassName: system-cluster-critical
+
+# 节点选择器：匹配工作节点标签
+nodeSelector:
+  node.kubernetes.io/node: ""
+
+# 亲和性规则：仅部署在工作节点
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: NotIn
+          values:
+          - k8s-master01
+          - k8s-master02
+          - k8s-master03
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k8s-node01
+          - k8s-node02
+          - k8s-node03
+
+topologySpreadConstraints: []
+
+tolerations:
+  - key: "CriticalAddonsOnly"
+    operator: "Exists"
+  - effect: "NoSchedule"
+    operator: "Exists"
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name:
+  annotations: {}
+
+podAnnotations: {}
+
+podLabels: {}
+
+dnsConfig: {}
+
+livenessProbe:
+  failureThreshold: 3
+  httpGet:
+    path: /healthz
+    port: 10258
+    scheme: HTTPS
+  initialDelaySeconds: 5
+  periodSeconds: 15
+
+service:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+
 ```
 
