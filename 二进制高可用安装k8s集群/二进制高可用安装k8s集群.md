@@ -3337,7 +3337,7 @@ tail -f /var/log/messages
 ```yaml
 [root@devops-app01 descheduler]# cat /opt/descheduler/values.yaml
 # 适用于小型K8s集群（10节点以内）的descheduler配置
-# 匹配Kubernetes v1.25.5，优化master节点过滤
+# 匹配Kubernetes v1.25.5，已修正插件归属问题
 
 kind: CronJob
 
@@ -3374,9 +3374,7 @@ podSecurityContext: {}
 
 nameOverride: ""
 fullnameOverride: ""
-
 namespaceOverride: ""
-
 commonLabels: {}
 
 cronJobApiVersion: "batch/v1"
@@ -3385,9 +3383,7 @@ suspend: false
 successfulJobsHistoryLimit: 2
 failedJobsHistoryLimit: 1
 ttlSecondsAfterFinished: 3600
-
 deschedulingInterval: 15m
-
 replicas: 1
 
 leaderElection:
@@ -3402,71 +3398,50 @@ cmdOptions:
 deschedulerPolicyAPIVersion: "descheduler/v1alpha2"
 
 deschedulerPolicy:
-  maxNoOfPodsToEvictPerNode: 5
+  maxNoOfPodsToEvictPerNode: 10
   maxNoOfPodsToEvictPerNamespace: 10
-  # 仅处理工作节点的Pod，完全排除master节点
-  nodeSelector: "kubernetes.io/hostname notin (k8s-master01,k8s-master02,k8s-master03)"
-  
+
+  # 策略：通用排除 Master 逻辑
+  nodeSelector: "node-role.kubernetes.io/control-plane notin (true), node-role.kubernetes.io/master notin (true)"
+   
   profiles:
     - name: default
       pluginConfig:
         - name: DefaultEvictor
           args:
             ignorePvcPods: false
-            evictLocalStoragePods: false
+            evictLocalStoragePods: true 
         - name: RemoveDuplicates
-        - name: RemovePodsHavingTooManyRestarts
-          args:
-            podRestartThreshold: 50
-            includingInitContainers: true
-        - name: RemovePodsViolatingNodeAffinity
-          args:
-            nodeAffinityType:
-            - requiredDuringSchedulingIgnoredDuringExecution
-        - name: RemovePodsViolatingNodeTaints
-        - name: RemovePodsViolatingInterPodAntiAffinity
-        - name: RemovePodsViolatingTopologySpreadConstraint
         - name: LowNodeUtilization
           args:
             thresholds:
-              cpu: 10
-              memory: 10
-              pods: 10
+              cpu: 50
+              memory: 50
+              pods: 50
             targetThresholds:
-              cpu: 70
-              memory: 70
-              pods: 70
+              cpu: 75
+              memory: 75
+              pods: 75
       plugins:
+        # 【修正重点】只启用 Balance 类型的插件
         balance:
           enabled:
             - RemoveDuplicates
-            - RemovePodsViolatingTopologySpreadConstraint
             - LowNodeUtilization
-        deschedule:
-          enabled:
-            - RemovePodsHavingTooManyRestarts
-            - RemovePodsViolatingNodeTaints
-            - RemovePodsViolatingNodeAffinity
-            - RemovePodsViolatingInterPodAntiAffinity
+        # deschedule 模块留空或者删除，因为我们上面没有配置相关的插件参数
+        # 这样就不会报 "non-existing plugins" 错误了
 
 priorityClassName: system-cluster-critical
 
-# 节点选择器：匹配工作节点标签
-nodeSelector:
-  node.kubernetes.io/node: ""
+# 节点选择器
+nodeSelector: {}
 
-# 亲和性规则：仅部署在工作节点
+# 亲和性规则：仅部署在工作节点（node01/02/03）
 affinity:
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
       nodeSelectorTerms:
       - matchExpressions:
-        - key: kubernetes.io/hostname
-          operator: NotIn
-          values:
-          - k8s-master01
-          - k8s-master02
-          - k8s-master03
         - key: kubernetes.io/hostname
           operator: In
           values:
@@ -3491,9 +3466,7 @@ serviceAccount:
   annotations: {}
 
 podAnnotations: {}
-
 podLabels: {}
-
 dnsConfig: {}
 
 livenessProbe:
@@ -3511,5 +3484,13 @@ service:
 serviceMonitor:
   enabled: false
 
+
+```
+
+```bash
+helm uninstall -n kube-system descheduler
+[root@devops-app01 descheduler]# cd /opt/descheduler
+/opt/descheduler
+helm upgrade --install descheduler descheduler/descheduler -n kube-system -f values.yaml
 ```
 
