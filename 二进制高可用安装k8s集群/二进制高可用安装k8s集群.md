@@ -617,6 +617,48 @@ vim /etc/containerd/config.toml
 
 - 配置文件参考：https://github.com/containerd/containerd/blob/main/docs/cri/registry.md
 
+- Contained v1.6.3~v2.0及以上版本配置
+
+```toml
+[plugins."io.containerd.cri.v1.images"]
+  snapshotter = "overlayfs"
+  disable_snapshot_annotations = true
+  discard_unpacked_layers = false
+  max_concurrent_downloads = 3
+  image_pull_progress_timeout = "5m0s"
+  image_pull_with_sync_fs = false
+  stats_collect_period = 10
+
+  [plugins."io.containerd.cri.v1.images".registry]
+    config_path = "/etc/containerd/certs.d"
+
+    [plugins."io.containerd.cri.v1.images".registry.auths]
+      # Auth configurations can be placed here if needed
+
+    [plugins."io.containerd.cri.v1.images".registry.configs."192.168.100.150:8082".tls]
+      insecure_skip_verify = true  # 跳过安全认证
+
+    [plugins."io.containerd.cri.v1.images".registry.configs."192.168.100.150:8082".auth]
+      username = "admin"
+      password = "YOUR_HARBOR_PASSWORD"
+
+  [plugins."io.containerd.cri.v1.images".registry.mirrors]
+    [plugins."io.containerd.cri.v1.images".registry.mirrors."docker.io"]
+      endpoint = ["https://registry-1.docker.io"]
+    [plugins."io.containerd.cri.v1.images".registry.mirrors."k8s.io"]
+      endpoint = ["https://k8s-gcr.m.daocloud.io"]
+    [plugins."io.containerd.cri.v1.images".registry.mirrors."192.168.100.150:8082"]
+      endpoint = ["http://192.168.100.150:8082"]
+```
+
+> 修改 `config.toml` 配置文件
+
+```
+vim /etc/containerd/config.toml
+```
+
+- Contained v1.6.2.x及以下版本配置
+
 ```toml
     [plugins."io.containerd.grpc.v1.cri".registry]
       config_path = ""
@@ -634,14 +676,20 @@ vim /etc/containerd/config.toml
       [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
         [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
           endpoint = ["https://registry-1.docker.io"]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."k8s.io"]
+          endpoint = ["https://k8s-gcr.m.daocloud.io"]
         [plugins."io.containerd.grpc.v1.cri".registry.mirrors."192.168.100.150:8082"]
           endpoint = ["http://192.168.100.150:8082"]
+```
+
+```
+systemctl daemon-reload && systemctl restart containerd
 ```
 
 拉取和查看镜像
 
 ```bash
-ctr -n k8s.io image pull 192.168.100.150:8082/proaimltd/ram-int-c:1.0 --plain-http --user admin:Harbor12345
+ctr -n k8s.io image pull 192.168.100.150:8082/proaimltd/ram-int-c:1.0 --plain-http --user admin:password
 ctr -n k8s.io image ls
 ```
 
@@ -1360,6 +1408,32 @@ backend k8s-master
   server k8s-master01    192.168.100.151:6443  check
   server k8s-master02    192.168.100.152:6443  check
   server k8s-master03    192.168.100.153:6443  check
+
+frontend k8s-ingress-http
+  bind 0.0.0.0:80
+  bind 127.0.0.1:80
+  mode tcp
+  default_backend k8s-ingress-nodes-http
+
+backend k8s-ingress-nodes-http
+  mode tcp
+  balance roundrobin
+  # 注意：必须加 send-proxy 开启代理协议，用于透传真实 IP
+  server k8s-node01 192.168.100.154:80 send-proxy check
+  server k8s-node02 192.168.100.155:80 send-proxy check
+
+frontend k8s-ingress-https
+  bind 0.0.0.0:443
+  bind 127.0.0.1:443
+  mode tcp
+  default_backend k8s-ingress-nodes-https
+
+backend k8s-ingress-nodes-https
+  mode tcp
+  balance roundrobin
+  # 注意：必须加 send-proxy 开启代理协议，用于透传真实 IP
+  server k8s-node01 192.168.100.154:443 send-proxy check
+  server k8s-node02 192.168.100.155:443 send-proxy check
 ```
 
 ## 7.1  Master01 keepalived
@@ -1679,6 +1753,7 @@ ExecStart=/usr/local/bin/kube-apiserver \
       --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.pem  \
       --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.pem  \
       --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client-key.pem  \
+      #--requestheader-allowed-names=front-proxy-client  \
       --requestheader-allowed-names=aggregator  \
       --requestheader-group-headers=X-Remote-Group  \
       --requestheader-extra-headers-prefix=X-Remote-Extra-  \
@@ -1735,6 +1810,7 @@ ExecStart=/usr/local/bin/kube-apiserver \
       --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.pem  \
       --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.pem  \
       --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client-key.pem  \
+      #--requestheader-allowed-names=front-proxy-client  \
       --requestheader-allowed-names=aggregator  \
       --requestheader-group-headers=X-Remote-Group  \
       --requestheader-extra-headers-prefix=X-Remote-Extra-  \
@@ -1791,6 +1867,7 @@ ExecStart=/usr/local/bin/kube-apiserver \
       --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.pem  \
       --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.pem  \
       --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client-key.pem  \
+      #--requestheader-allowed-names=front-proxy-client  \
       --requestheader-allowed-names=aggregator  \
       --requestheader-group-headers=X-Remote-Group  \
       --requestheader-extra-headers-prefix=X-Remote-Extra-  \
@@ -2453,10 +2530,10 @@ linux/amd64, go1.19.1, 596a9f9
 
 在新版的Kubernetes中系统资源的采集均使用Metrics-server，可以通过Metrics采集节点和Pod的内存、磁盘、CPU和网络的使用率。
 
-安装metrics server
+[安装metrics server](https://github.com/kubernetes-sigs/metrics-server)
 
 ```sh
-[root@k8s-master01 metrics-server]# cd /opt/installation_package/k8s-ha-install/metrics-server && kubectl create -f .
+[root@k8s-master01 metrics-server]# cd /opt/installation_package/k8s-ha-install/metrics-server && kubectl apply -f .
 ```
 
 ```sh
@@ -3049,203 +3126,775 @@ b) 生产环境中etcd一定要和系统盘分开，一定要用ssd硬盘。
 
 c) Docker数据盘也要和系统盘分开，有条件的话可以使用ssd硬盘
 
+---
 
+# 第十八章 安装Ingress Controller (生产级边缘节点与代理协议透传)
 
-# 第十八章  安装Ingress Controller
+在生产环境中，为了兼顾高可用（VIP）并获取客户端的真实物理 IP，我们采用 **边缘节点（Edge Node） + HostNetwork（主机网络） + Proxy Protocol（代理协议）** 的架构。
 
-Ingress Examples：https://github.com/kubernetes/ingress-nginx/tree/main/docs/examples
+由于我们在前端使用了 HAProxy 代理 80/443 端口并开启了 `send-proxy`，Ingress 必须进行相应的配套调整。本章将废弃传统的 NodePort 部署方式，采用 DaemonSet 模式直连物理网卡。
 
-## 18.1  安装对应版本（推荐）
+## 18.1 架构说明与边缘节点准备
 
-官方安装文档：https://kubernetes.github.io/ingress-nginx/deploy/#bare-metal-clusters
+Ingress Controller 开启主机网络（HostNetwork）后，会直接占用宿主机的 80 和 443 端口。为了防止端口冲突，并保护 Master 节点的大脑安全，**Ingress 绝对不能部署在所有的节点上**。
 
-> 基于[官方安装文件](https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.5.1/deploy/static/provider/baremetal/deploy.yaml)，修改国内镜像制作
-
-```bash
-[root@k8s-master01 ingress]# cd /opt/installation_package/k8s-ha-install/ingress/ && kubectl create -f .
-```
+我们需要规划至少两台 Worker 节点作为边缘节点（专门接收外部流量的网关）。 这里我们选定 `k8s-node01` 和 `k8s-node02`，给它们打上 `ingress="true"` 的专属标签：
 
 ```bash
-[root@k8s-master01 ingress]# kubectl get pod -n ingress-nginx 
-NAME                                        READY   STATUS      RESTARTS   AGE
-ingress-nginx-admission-create-6bdn8        0/1     Completed   0          10m
-ingress-nginx-admission-patch-5htfh         0/1     Completed   0          10m
-ingress-nginx-controller-64c6577bf5-b4xx2   1/1     Running     0          10m
+# 以下操作在 Master01 节点执行
+kubectl label node k8s-node01 ingress="true"
+kubectl label node k8s-node02 ingress="true"
+
+# 查看打标签结果
+kubectl get nodes --show-labels | grep ingress
 ```
 
-## 18.2  Helm安装Ingress Controller（生产级高可用架构）
+## 18.2 部署 Ingress Controller
 
-### 18.2.1  Helm管理工具安装
+这里我们直接使用基于官方定制的 YAML 文件进行部署。该文件已包含以下核心生产级改造：
 
-- Helm管理工具安装文档：https://helm.sh/docs/intro/install/
-- Helm管理工具最新版本：https://github.com/helm/helm/releases
+1. **DaemonSet 部署：** 配合节点标签，确保每个边缘节点只运行一个 Ingress。
+2. **开启 HostNetwork：** 直接使用宿主机网络，绕过 kube-proxy 造成的 SNAT 源地址转换。
+3. **开启 Proxy Protocol：** 配合 HAProxy，完美提取 X-Forwarded-For 真实请求 IP。
+
+### 18.2.1 准备配置文件
+
+创建并编辑部署文件 `deploy.yaml`：
 
 ```bash
-wget https://get.helm.sh/helm-v3.11.0-linux-amd64.tar.gz
-tar -zxvf helm-v3.11.0-linux-amd64.tar.gz
-mv linux-amd64/helm /usr/local/bin/helm && helm version
+mkdir -p /opt/installation_package/k8s-ha-install/ingress/
+cd /opt/installation_package/k8s-ha-install/ingress/
+vi deploy.yaml
 ```
 
-### 18.2.2  Helm安装Ingress
-
-Helm安装Ingress文档：[https://kubernetes.github.io/ingress-nginx/deploy/](https://kubernetes.github.io/ingress-nginx/deploy/)
-
-1、添加ingress的helm仓库
-
-```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
-```
-
-2、下载ingress的helm包至本地
-
-```sh
-helm search repo ingress-nginx/ingress-nginx
-helm pull ingress-nginx/ingress-nginx
-```
-
-3、更改对应的配置
-
-```sh
-tar xf ingress-nginx-3.22.0.tgz
-cd ingress-nginx
-vim values.yaml
-```
-
-4、需要修改的位置
-
-- Controller和admissionWebhook的镜像地址，需要将公网镜像同步至公司内网镜像仓库（和课程不一致的版本，需要自行同步gcr镜像的，可以百度查一下使用阿里云同步gcr的镜像，也可以参考这个连接https://blog.csdn.net/weixin_39961559/article/details/80739352，或者参考这个连接： https://blog.csdn.net/sinat_35543900/article/details/103290782）
-  - 镜像的digest值注释！
-
-- hostNetwork设置为true
-  - 使用宿主机的网络，部署成功后可在node节点通过`netstat -lntp | grep 80`及`ps aux | grep nginx`，可以查看到nginx/master监听的端口号和进程
-
-- dnsPolicy设置为 ClusterFirstWithHostNet
-  - ClusterFirstWithHostNet专门为了hostNetwork而设计的，否则ingress-nginx-controller无法解析service
-
-- nodeSelector添加ingress: "true"部署至指定节点
+将以下完整内容粘贴到 `deploy.yaml` 中（由于篇幅较长，请确保完整复制）：
 
 ```yaml
-  nodeSelector:
-    kubernetes.io/os: linux
-    ingress: "true"
-```
-
-- 类型更改为 kind: DaemonSet
-  - 因为DaemonSet支持部署在指定节点，Deployment没有这种机制。
-
-- 虚拟机类型更改为 type: ClusterIP，云服务器类型更改为 type: LoadBalancer
-- ingress nginx 设置为默认的ingressClass
-
-```yaml
-  ## This section refers to the creation of the IngressClass resource
-  ## IngressClass resources are supported since k8s >= 1.18 and required since k8s >= 1.19
-  ingressClassResource:
-    name: nginx
-    enabled: true
-    default: true # 设置为true
-    controllerValue: "k8s.io/ingress-nginx"
-```
-
-5、部署ingress
-
-给需要部署ingress的节点上打标签
-
-```sh
-kubectl label node k8s-node01 ingress=true
-kubectl create ns ingress-nginx
-helm install ingress-nginx -n ingress-nginx .
-```
-
-6、将ingress controller部署至Node节点
-
-> ingress controller不能部署在Master节点，生产环境最少三个ingress controller，并且最好是独立的Node节点
->
-> 注意：访问ingress域名时，需要访问ingress-controller所在节点的主机地址，而没有部署ingress-controller的节点，无法转发。
-
-```sh
-kubectl label node k8s-node02 ingress=true
-kubectl label node k8s-master03 ingress-
-```
-
-## 18.3  [k8s流量策略与ingress获取真实ip](https://blog.horus-k.com/2021/06/17/k8s%E6%B5%81%E9%87%8F%E7%AD%96%E7%95%A5%E4%B8%8Eingress%E8%8E%B7%E5%8F%96%E7%9C%9F%E5%AE%9Eip/#%E8%8E%B7%E5%8F%96%E7%9C%9F%E5%AE%9Eip)
-
-参考链接：https://kubernetes.github.io/ingress-nginx/deploy/baremetal/、https://metallb.universe.tf/usage/#traffic-policies
-
-**业务架构：**
-Client->WAF->LB->ECS->容器
-问题：在容器中获取不到真实的客户端公网IP
-
-**分析**:
-
-```bash
-# 容器里面抓包验证
-tcpdump -i eth0 -s 0 -w /tmp/http.cap port 端口
-
-WAF已经将 真实客户端地址放到了 x-Forwarded-For 的字段中传给了ECS；
-在容器中抓包，看到一个 x-Forwarded-For 的字段是错误的,对应的IP为WAF的回源地址；
-ingress将真实的客户端IP，放到了 x-Original-Forwarded-For 。而将WAF的回源地址放到了 x-Forwarded-For了。造成ingress获取ip为WAF回源地址。
-
-# 查看虚拟服务器、服务组的转发规则
-ipvsadm -Ln
-```
-
-### [18.3.1  X-Forwarded-For 配置](https://kubernetes.io/zh-cn/docs/tutorials/services/source-ip/)
-
-```bash
-kubectl -n ingress-nginx edit configmaps ingress-nginx-controller
-```
-
-```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+  name: ingress-nginx
+---
+apiVersion: v1
+automountServiceAccountToken: true
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx
+  namespace: ingress-nginx
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx
+  namespace: ingress-nginx
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - pods
+  - secrets
+  - endpoints
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses/status
+  verbs:
+  - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingressclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resourceNames:
+  - ingress-nginx-leader
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resourceNames:
+  - ingress-nginx-leader
+  resources:
+  - leases
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - list
+  - watch
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - endpoints
+  - nodes
+  - pods
+  - secrets
+  - namespaces
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses/status
+  verbs:
+  - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingressclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - list
+  - watch
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx
+  namespace: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ingress-nginx
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx
+  namespace: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ingress-nginx-admission
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ingress-nginx
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx
+  namespace: ingress-nginx
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ingress-nginx-admission
+subjects:
+- kind: ServiceAccount
+  name: ingress-nginx-admission
+  namespace: ingress-nginx
+---
 apiVersion: v1
 data:
   allow-snippet-annotations: "true"
   compute-full-forwarded-for: "true"
   forwarded-for-header: "X-Forwarded-For"
   use-forwarded-headers: "true"
+  use-proxy-protocol: "true"  # 核心配置：开启代理协议解析
+  log-format-upstream: '{"time": "$time_local","remote_addr": "$remote_addr","x-forward-for":
+    "$proxy_add_x_forwarded_for","request_id": "$req_id","remote_user": "$remote_user","bytes_sent":
+    "$body_bytes_sent","request_time": "$request_time","status": "$status","vhost":
+    "$host","request_proto": "$server_protocol","path": "$uri","request_query": "$args","request_length":
+    "$request_length","duration": "$request_time","method": "$request_method","http_referrer":
+    "$http_referer","http_user_agent": "$http_user_agent", "namespace": "$namespace",
+    "ingress_name": "$ingress_name","service_name": "$service_name","service_port":
+    "$service_port"}'
+  keep-alive-requests: "10000"
+  upstream-keepalive-requests: "1000"
+  upstream-keepalive-timeout: "300"
+  proxy-body-size: "0"
+  keep-alive: "300"
 kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - appProtocol: http
+    name: http
+    port: 80
+    protocol: TCP
+    targetPort: http
+  - appProtocol: https
+    name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  selector:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+  type: ClusterIP  # 废弃 NodePort，改为内部 IP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-controller-admission
+  namespace: ingress-nginx
+spec:
+  ports:
+  - appProtocol: https
+    name: https-webhook
+    port: 443
+    targetPort: webhook
+  selector:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: DaemonSet   # 核心部署模式修改：从 Deployment 改为 DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  minReadySeconds: 0
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/instance: ingress-nginx
+      app.kubernetes.io/name: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: ingress-nginx
+        app.kubernetes.io/name: ingress-nginx
+    spec:
+      hostNetwork: true   # 核心配置：开启主机网络
+      dnsPolicy: ClusterFirstWithHostNet  # 核心配置：主机网络下的 DNS 策略
+      containers:
+      - args:
+        - /nginx-ingress-controller
+        - --election-id=ingress-nginx-leader
+        - --controller-class=k8s.io/ingress-nginx
+        - --ingress-class=nginx
+        - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+        - --validating-webhook=:8443
+        - --validating-webhook-certificate=/usr/local/certificates/cert
+        - --validating-webhook-key=/usr/local/certificates/key
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: LD_PRELOAD
+          value: /usr/local/lib/libmimalloc.so
+        image: registry.cn-hangzhou.aliyuncs.com/google_containers/nginx-ingress-controller:v1.5.1
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /wait-shutdown
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /healthz
+            port: 10254
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: controller
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+        - containerPort: 443
+          name: https
+          protocol: TCP
+        - containerPort: 8443
+          name: webhook
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 10254
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 90Mi
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            drop:
+            - ALL
+          runAsUser: 101
+        volumeMounts:
+        - mountPath: /usr/local/certificates/
+          name: webhook-cert
+          readOnly: true
+      nodeSelector:
+        kubernetes.io/os: linux
+        ingress: "true"   # 核心配置：只部署在打了 ingress=true 标签的节点
+      serviceAccountName: ingress-nginx
+      terminationGracePeriodSeconds: 300
+      volumes:
+      - name: webhook-cert
+        secret:
+          secretName: ingress-nginx-admission
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission-create
+  namespace: ingress-nginx
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: admission-webhook
+        app.kubernetes.io/instance: ingress-nginx
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/part-of: ingress-nginx
+        app.kubernetes.io/version: 1.5.1
+      name: ingress-nginx-admission-create
+    spec:
+      containers:
+      - args:
+        - create
+        - --host=ingress-nginx-controller-admission,ingress-nginx-controller-admission.$(POD_NAMESPACE).svc
+        - --namespace=$(POD_NAMESPACE)
+        - --secret-name=ingress-nginx-admission
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: registry.cn-hangzhou.aliyuncs.com/google_containers/kube-webhook-certgen:v20220916-gd32f8c343
+        imagePullPolicy: IfNotPresent
+        name: create
+        securityContext:
+          allowPrivilegeEscalation: false
+      nodeSelector:
+        kubernetes.io/os: linux
+      restartPolicy: OnFailure
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 2000
+      serviceAccountName: ingress-nginx-admission
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission-patch
+  namespace: ingress-nginx
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: admission-webhook
+        app.kubernetes.io/instance: ingress-nginx
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/part-of: ingress-nginx
+        app.kubernetes.io/version: 1.5.1
+      name: ingress-nginx-admission-patch
+    spec:
+      containers:
+      - args:
+        - patch
+        - --webhook-name=ingress-nginx-admission
+        - --namespace=$(POD_NAMESPACE)
+        - --patch-mutating=false
+        - --secret-name=ingress-nginx-admission
+        - --patch-failure-policy=Fail
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: registry.cn-hangzhou.aliyuncs.com/google_containers/kube-webhook-certgen:v20220916-gd32f8c343
+        imagePullPolicy: IfNotPresent
+        name: patch
+        securityContext:
+          allowPrivilegeEscalation: false
+      nodeSelector:
+        kubernetes.io/os: linux
+      restartPolicy: OnFailure
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 2000
+      serviceAccountName: ingress-nginx-admission
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: nginx
+spec:
+  controller: k8s.io/ingress-nginx
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  labels:
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/instance: ingress-nginx
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/version: 1.5.1
+  name: ingress-nginx-admission
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: ingress-nginx-controller-admission
+      namespace: ingress-nginx
+      path: /networking/v1/ingresses
+  failurePolicy: Fail
+  matchPolicy: Equivalent
+  name: validate.nginx.ingress.kubernetes.io
+  rules:
+  - apiGroups:
+    - networking.k8s.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - ingresses
+  sideEffects: None
 ```
 
-### [18.3.2  ingress svc 流量策略设置成Local](https://segmentfault.com/a/1190000022272897)
+### 18.2.2 执行部署与验证
 
-如果使用ingress NodePort方式，并以DaemonSet方式安装ingress-nginx-controller,可以实现客户端从任何节点都可以访问，并可获取到客户端的真实IP：
-
-externalTrafficPolicy的好处是，Pod内应用的确可以拿到真实的客户端地址了，但坏处是： **客户端只能使用pod所在的node的IP访问，无法使用其他node的ip访问以及使用vrrp之类的virtual IP来实现ha**，对客户端来说会麻烦一点。
-
-设置 `service.spec.externalTrafficPolicy` 的值为 `Local`，请求就只会被代理到本地 endpoints 而不会被转发到其它节点。这样就保留了最初的源 IP 地址。
-
-```yaml
-# 将 Deployment 改为 DaemonSet
-vim /opt/installation_package/k8s-ha-install/ingress/deploy.yaml
-# 删掉 replicas: 1
-# 将ingress svc 改为 externalTrafficPolicy: Local
+```bash
+[root@k8s-master01 ingress]# kubectl apply -f deploy.yaml
 ```
 
-```
-               client
-        ^ /              ^ \ 
-       / /                \ \ 
-      / v                  \ v    
-node 1 service-NodePort     node 2 serviceNodePort  
-     ^ |                    ^ |
-     | |                    | |
-     | v                    | v
-node1 ingress-controller  node2 ingress-controller 
-     ^  \                  /  ^    
-      \  \                /  /   
-       \  \              /  /  
-        \  v            v  /          
-              endpoint
+**验证是否正常落在边缘节点：**
+
+```bash
+[root@k8s-master01 ingress]# kubectl get pod -n ingress-nginx -o wide
+# 此时应该看到两个处于 Running 状态的 controller pod，
+# 且 NODE 字段精准分布在 k8s-node01 和 k8s-node02 上。
 ```
 
-nginx日志`$http_x_forwarded_for`已经记录了客户端的真实IP
+## 18.3 真实 IP 透传原理解析
 
-**总结**
+采用本章的架构后，系统的网络流量链路如下： **Client (客户端 IP) -> HAProxy (192.168.100.160) -> Node 节点 (192.168.100.154/155) 的 80/443 端口 -> K8s 内部 SpringBoot Pod**
 
-> 7层转发链路 Client(客户端) > Nginx > K8s Ingress(Nginx ingress)
->
-> 4层转发链路 Client(客户端) > 公有云LB > K8s Ingress(Nginx ingress) (阿里云默认为此)
->
-> ps: 实际业务会串联更多层级的转发。DDOS、WAF、CDN、Api Gateway一般是http 7层转发，LB一般是4层tcp转发
+由于 K8s Ingress 已经开启了 HostNetwork，避免了内部源地址被替换为 172 网段； 同时，前端的 HAProxy （见第七章高可用配置）由于在 `backend` 节点中配置了 `send-proxy`：
+
+```bash
+frontend k8s-ingress-http
+  bind 0.0.0.0:80
+  mode tcp
+  default_backend k8s-ingress-nodes-http
+
+backend k8s-ingress-nodes-http
+  mode tcp
+  balance roundrobin
+  # 必须添加 send-proxy，将真实 IP 封装在 Proxy 协议头中发给 K8s 节点
+  server k8s-node01 192.168.100.154:80 send-proxy check
+  server k8s-node02 192.168.100.155:80 send-proxy check
+
+frontend k8s-ingress-https
+  bind 0.0.0.0:443
+  mode tcp
+  default_backend k8s-ingress-nodes-https
+
+backend k8s-ingress-nodes-https
+  mode tcp
+  balance roundrobin
+  server k8s-node01 192.168.100.154:443 send-proxy check
+  server k8s-node02 192.168.100.155:443 send-proxy check
+```
+
+**HAProxy + Proxy Protocol 的黄金组合，确保了在复杂的内网集群架构、VPN拨入环境下，后端依然可以获取最前沿的物理网络 IP（如 VPN 分配的 IP 或直连局域网 IP），解决了 K8s 内部署应用获取客户端真实 IP 的终极难题。**
+
+---
 
 # 第十九章  集群宕机恢复
 
@@ -3277,5 +3926,169 @@ systemctl restart containerd kubelet kube-proxy
 
 ```bash
 tail -f /var/log/messages
+```
+
+# 第二十章 实战技巧
+
+## 20.1 定时平均分配节点容器及资源
+
+```yaml
+[root@devops-app01 descheduler]# cat /opt/descheduler/values.yaml
+# 适用于小型K8s集群（10节点以内）的descheduler配置
+# 匹配Kubernetes v1.25.5，已修正插件归属问题
+
+kind: CronJob
+
+image:
+  repository: registry.k8s.io/descheduler/descheduler
+  tag: "v0.29.0"  # 与K8s v1.25.5兼容的版本
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+ports:
+  - containerPort: 10258
+    protocol: TCP
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  privileged: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+podSecurityContext: {}
+
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+commonLabels: {}
+
+cronJobApiVersion: "batch/v1"
+schedule: "*/15 * * * *"
+suspend: false
+successfulJobsHistoryLimit: 2
+failedJobsHistoryLimit: 1
+ttlSecondsAfterFinished: 3600
+deschedulingInterval: 15m
+replicas: 1
+
+leaderElection:
+  enabled: false
+
+command:
+- "/bin/descheduler"
+
+cmdOptions:
+  v: 2
+
+deschedulerPolicyAPIVersion: "descheduler/v1alpha2"
+
+deschedulerPolicy:
+  maxNoOfPodsToEvictPerNode: 10
+  maxNoOfPodsToEvictPerNamespace: 10
+
+  # 策略：通用排除 Master 逻辑
+  nodeSelector: "node-role.kubernetes.io/control-plane notin (true), node-role.kubernetes.io/master notin (true)"
+   
+  profiles:
+    - name: default
+      pluginConfig:
+        - name: DefaultEvictor
+          args:
+            ignorePvcPods: false
+            evictLocalStoragePods: true 
+        - name: RemoveDuplicates
+        - name: LowNodeUtilization
+          args:
+            thresholds:
+              cpu: 50
+              memory: 50
+              pods: 50
+            targetThresholds:
+              cpu: 75
+              memory: 75
+              pods: 75
+      plugins:
+        # 【修正重点】只启用 Balance 类型的插件
+        balance:
+          enabled:
+            - RemoveDuplicates
+            - LowNodeUtilization
+        # deschedule 模块留空或者删除，因为我们上面没有配置相关的插件参数
+        # 这样就不会报 "non-existing plugins" 错误了
+
+priorityClassName: system-cluster-critical
+
+# 节点选择器
+nodeSelector: {}
+
+# 亲和性规则：仅部署在工作节点（node01/02/03）
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k8s-node01
+          - k8s-node02
+          - k8s-node03
+
+topologySpreadConstraints: []
+
+tolerations:
+  - key: "CriticalAddonsOnly"
+    operator: "Exists"
+  - effect: "NoSchedule"
+    operator: "Exists"
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name:
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+dnsConfig: {}
+
+livenessProbe:
+  failureThreshold: 3
+  httpGet:
+    path: /healthz
+    port: 10258
+    scheme: HTTPS
+  initialDelaySeconds: 5
+  periodSeconds: 15
+
+service:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+
+
+```
+
+```bash
+helm uninstall -n kube-system descheduler
+[root@devops-app01 descheduler]# cd /opt/descheduler
+/opt/descheduler
+helm upgrade --install descheduler descheduler/descheduler -n kube-system -f values.yaml
 ```
 
